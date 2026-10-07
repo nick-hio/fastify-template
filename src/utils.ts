@@ -19,3 +19,26 @@ export const getRequestIP = (request: FastifyRequest) => {
 
     return request.ip
 }
+
+export const safeAwait = async <T, E = Error>(
+    promise: Promise<T>,
+): Promise<[null, T] | [E, null]> => {
+    try {
+        const data = await promise;
+        return [null, data as T];
+    } catch (error) {
+        return [error as E, null];
+    }
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export const safeTry = <E = Error, T = unknown>(
+    func: (...args: any[]) => T,
+): [null, T] | [E, null] => {
+    try {
+        const data = func();
+        return [null, data as T];
+    } catch (error) {
+        return [error as E, null];
+    }
+}
