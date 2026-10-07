@@ -1,6 +1,8 @@
 [install]
+# Only install package versions published at least 3 days ago (supply-chain protection).
 minimumReleaseAge = 259200
-minimumReleaseAgeExcludes = ["@types/node", "typescript", "tsc", "tsserver"]
+minimumReleaseAgeExcludes = ["@types/node", "typescript"]
 
 [test]
 root = "./test"
+preload = ["./test/setup.ts"]

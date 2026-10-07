@@ -1,11 +1,8 @@
-import type { Query } from "drizzle-orm/sql/sql";
+import type { InferInsertModel } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 
-export interface SeedDefinition {
-    name: string;
-    size: number;
-    query: () => Query;
-}
-
-export interface SeedModule {
-    seed: SeedDefinition;
+/** Default rows for one table. They are inserted at startup only while the table is empty. */
+export interface Seed<T extends SQLiteTable = SQLiteTable> {
+    table: T;
+    rows: InferInsertModel<T>[];
 }

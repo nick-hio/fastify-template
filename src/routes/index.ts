@@ -1,8 +1,10 @@
-import fp from "fastify-plugin";
-import exampleRoute from "@/routes/example.ts";
+import type { FastifyPluginAsync } from "fastify";
+import exampleRoute from "@/routes/example";
+import healthRoute from "@/routes/health";
 
-export default fp((fastify, _opts, done) => {
-    fastify.register(exampleRoute, { prefix: '/example' });
+const routes: FastifyPluginAsync = async (fastify) => {
+    await fastify.register(healthRoute, { prefix: "/health" });
+    await fastify.register(exampleRoute, { prefix: "/example" });
+};
 
-    done();
-}, { name: 'routes' });
+export default routes;

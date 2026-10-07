@@ -1,59 +1,41 @@
 import { createEnv } from "@t3-oss/env-core";
-import * as z from "zod";
-import { en } from "zod/locales";
+import { z } from "zod";
 
-z.config(en());
-
-export type ZodValidationIssue = {
-    expected: 'string' | 'number' | 'boolean' | 'enum' | 'union' | 'intersection' | 'array' | 'object' | 'unknown' | (string & {});
-    code: string;
-    path: string[];
-    message: string;
-}
-
+/**
+ * The only place that reads `process.env`. Everything else imports `env`.
+ * Keep `.env.example` and the README table in sync when adding a variable.
+ */
 export const env = createEnv({
     server: {
-        NODE_ENV: z.union([
-            z.literal("development"),
-            z.literal("production"),
-            z.literal("test"),
-        ]).default("production"),
+        NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
 
-        LOG_LEVEL: z.union([
-            z.literal("fatal"),
-            z.literal("error"),
-            z.literal("warn"),
-            z.literal("info"),
-            z.literal("debug"),
-            z.literal("trace"),
-        ]).default("info"),
+        LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
-        /* ~~~ development ~~~ */
+        APP_HOST: z.string().default("0.0.0.0"),
 
-        APP_PORT: z.union([
-            z.number()
-                .int()
-                .min(1)
-                .max(65535),
-            z.string()
-                .regex(/^\d+$/, "Must be a valid port number")
-                .transform((val) => parseInt(val, 10))
-                .refine((num) => num >= 1 && num <= 65535, "Port number must be between 1 and 65535"),
-        ]).default(3000),
+        APP_PORT: z.coerce.number("Must be a valid port number").int().min(1).max(65535).default(3000),
+
+        /** Directory for persistent state. Relative paths resolve from the working directory. */
+        DATA_DIR: z.string().default("./data"),
+
+        /** Enable only when every request arrives through a reverse proxy that sets the client IP headers. */
+        TRUST_PROXY: z.stringbool().default(false),
     },
 
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,
 
     onValidationError: (issues) => {
-        const maxNameLength = Math.max(...issues.map((iss) => (iss as ZodValidationIssue).path.join(".").length), 0);
-        console.error(`\n[ERROR] Environment variable(s) failed validation:`);
-        issues.forEach((iss) => {
-            const issue = iss as ZodValidationIssue;
-            const name = issue.path.join(".");
-            const gap = " ".repeat(maxNameLength - name.length);
-            console.error(` - ${name}${gap} -> ${issue.message}`);
-        });
+        const rows = issues.map((issue) => ({
+            name: (issue.path ?? []).map((segment) => (typeof segment === "object" ? segment.key : segment)).join("."),
+            message: issue.message,
+        }));
+        const maxNameLength = Math.max(...rows.map((row) => row.name.length), 0);
+
+        console.error("\n[ERROR] Environment variable(s) failed validation:");
+        for (const row of rows) {
+            console.error(` - ${row.name.padEnd(maxNameLength)} -> ${row.message}`);
+        }
         process.exit(1);
-    }
+    },
 });
