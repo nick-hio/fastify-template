@@ -1,29 +1,37 @@
-import Fastify from 'fastify';
-import * as fs from "node:fs";
-import { env } from "@/env";
-import { DATA_DIR } from "@/db"
+import sensible from "@fastify/sensible";
+import Fastify from "fastify";
+import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import { init } from "@/db/init";
+import { env } from "@/env";
+import errorHandler from "@/plugins/error-handler";
 import routes from "@/routes";
-import notFoundHook from "@/hooks/not-found";
 
-export const fastify = Fastify({
-    logger: {
-        level: env.LOG_LEVEL,
-    }
-});
+/**
+ * Builds a ready-to-use server without binding a port.
+ * `src/index.ts` listens on it; tests drive it with `server.inject()`.
+ */
+export const buildServer = async () => {
+    const fastify = Fastify({
+        logger: {
+            level: env.LOG_LEVEL,
+        },
+    }).withTypeProvider<ZodTypeProvider>();
 
-if (!fs.existsSync(DATA_DIR)) {
-    fastify.log.error(`Data directory does not exist: '${DATA_DIR}'`);
-    process.exit(1);
-}
+    fastify.setValidatorCompiler(validatorCompiler);
+    fastify.setSerializerCompiler(serializerCompiler);
 
-await init(fastify.log);
+    await init(fastify.log);
 
-/* pre-route hooks */
-// fastify.register();
+    /* plugins */
+    await fastify.register(sensible);
+    await fastify.register(errorHandler);
 
-/* routes */
-fastify.register(routes);
+    /* routes */
+    await fastify.register(routes);
 
-/* post-route hooks */
-fastify.register(notFoundHook);
+    await fastify.ready();
+
+    return fastify;
+};
+
+export type Server = Awaited<ReturnType<typeof buildServer>>;

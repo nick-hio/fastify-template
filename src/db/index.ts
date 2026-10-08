@@ -1,15 +1,20 @@
-import { join } from "path";
-import { env } from "@/env.ts";
-import { drizzle } from 'drizzle-orm/libsql';
-import type { Config } from '@libsql/client';
+import { accessSync, constants, mkdirSync } from "node:fs";
+import { drizzle } from "drizzle-orm/libsql";
+import { DATA_DIR, DATABASE_URL } from "@/db/config";
 
-export const DATA_DIR = env.NODE_ENV === 'development' || env.NODE_ENV === 'test'
-    ? join(__dirname, '../../data')
-    : '/data';
-export const DATABASE_FILE = `file:${join(DATA_DIR, 'database.db')}`;
+const connect = () => {
+    try {
+        mkdirSync(DATA_DIR, { recursive: true });
+        // SQLite also writes its journal files here, so a read-only directory only fails later, on the first write.
+        accessSync(DATA_DIR, constants.W_OK);
 
-export const connection: Config = {
-    url: DATABASE_FILE,
-}
+        return drizzle({ connection: { url: DATABASE_URL } });
+    } catch (cause) {
+        throw new Error(
+            `Unable to open the database in '${DATA_DIR}'. The directory must be writable by the user running the server (uid ${process.getuid?.() ?? "unknown"}).`,
+            { cause },
+        );
+    }
+};
 
-export const db = drizzle({ connection });
+export const db = connect();

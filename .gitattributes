@@ -1,0 +1,2 @@
+# Check out with LF line endings on every platform, so formatting checks and Docker builds behave the same.
+* text=auto eol=lf

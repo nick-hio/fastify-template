@@ -1,15 +1,8 @@
+import { db } from "@/db";
 import { env } from "@/env";
-import { fastify } from "@/server";
+import { buildServer } from "@/server";
 
-const start = async () => {
-    try {
-        await fastify.listen({ port: env.APP_PORT, host: "0.0.0.0" });
-    } catch (err) {
-        fastify.log.error("Error while starting server");
-        fastify.log.error(err);
-        process.exit(1);
-    }
-};
+const fastify = await buildServer();
 
 let isShuttingDown = false;
 
@@ -23,6 +16,7 @@ const shutdown = async (signal: NodeJS.Signals) => {
 
     try {
         await fastify.close();
+        db.$client.close();
         fastify.log.info("Server closed");
         process.exit(0);
     } catch (err) {
@@ -34,4 +28,9 @@ const shutdown = async (signal: NodeJS.Signals) => {
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-await start();
+try {
+    await fastify.listen({ host: env.APP_HOST, port: env.APP_PORT });
+} catch (err) {
+    fastify.log.error({ err }, "Error while starting server");
+    process.exit(1);
+}

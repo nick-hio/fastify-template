@@ -1,23 +1,15 @@
-import { createClient } from '@libsql/client';
 import type { FastifyBaseLogger } from "fastify";
-import { connection } from "@/db";
-import { migrate } from "@/db/init/migrate.ts";
-import { seed } from "@/db/init/seed.ts";
+import { migrate } from "@/db/init/migrate";
+import { seed } from "@/db/init/seed";
 
 export const init = async (log: FastifyBaseLogger): Promise<void> => {
     try {
-        log.info('[INIT] Connecting to database...');
-        const client = createClient(connection);
-        log.info('[INIT] Connected to database');
-
-        await migrate(client, log);
-        await seed(client, log);
-
-        client.close();
+        await migrate(log);
+        await seed(log);
     } catch (e) {
-        log.error('[INIT] Fatal initialization error');
+        log.error("[INIT] Fatal initialization error");
         throw e;
     }
 
-    log.info('[INIT] Completed database initialization');
-}
+    log.info("[INIT] Completed database initialization");
+};
