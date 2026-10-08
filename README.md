@@ -71,9 +71,11 @@ The `/example` route and its `kv` table show how routes, schemas, migrations and
 ## Working with AI agents
 
 - [AGENTS.md](AGENTS.md) describes the commands, layout and conventions. Most coding agents read it automatically. `CLAUDE.md` imports it for Claude Code.
-- [.claude/skills/](.claude/skills) holds step-by-step playbooks for starting a new project, adding an endpoint, changing the database schema and working on the Docker image.
+- [.agents/skills/](.agents/skills) holds step-by-step playbooks for starting a new project, adding an endpoint, changing the database schema, adding an MCP server and working on the Docker image. `.claude/skills` is a symlink to it, so Claude Code loads the same playbooks as skills.
 - `bun run check` is the single command an agent runs to confirm a change.
-- `bun run bundle` writes `bundle.tar.gz` with everything a new project needs, for agents that take a file upload instead of a repository.
+- `bun run bundle` writes `bundle.tar.gz` with everything a new project needs, for agents that take a file upload instead of a repository. The archive leaves out the `.claude/skills` symlink.
+
+> On Windows, Git only creates the symlink when symlink support is on: enable Developer Mode and clone with `git clone -c core.symlinks=true`. Otherwise `.claude/skills` is checked out as a text file.
 
 ## Docker
 

@@ -40,6 +40,7 @@ description: Steps for adding or changing an HTTP endpoint in this Fastify serve
     - Return the response value from the handler. Use `reply.code(201)` only when the status is not 200.
     - Throw `fastify.httpErrors.<name>("message")` for expected failures such as `notFound`, `conflict` or `forbidden`.
     - Do not catch unexpected errors. The error handler turns them into a logged, generic 500.
+    - To act on a failure, for example to answer 502 when another service is down, use `safeAwait` or `safeTry` from `@/utils` instead of `try`/`catch`. See "Error handling" in `AGENTS.md`.
 
 4. **Register a new file** in `src/routes/index.ts`:
 
