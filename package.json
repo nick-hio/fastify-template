@@ -12,13 +12,13 @@
     "lint": "biome check",
     "format": "biome check --write",
     "check": "bun run typecheck && bun run lint && bun test",
-    "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio",
+    "db:generate": "bun --bun drizzle-kit generate",
+    "db:studio": "bun --bun drizzle-kit studio",
+    "db:backup": "bun src/db/backup.ts",
     "bundle": "bun bundle.ts"
   },
   "dependencies": {
     "@fastify/sensible": "^6.0.6",
-    "@libsql/client": "^0.18.0",
     "@t3-oss/env-core": "^0.13.11",
     "drizzle-orm": "^1.0.0-rc.4",
     "fastify": "^5.12.5",
