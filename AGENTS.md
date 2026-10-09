@@ -73,7 +73,7 @@ if (error) {
 ```
 
 - Pass a promise to `safeAwait` and a function to `safeTry`. `safeTry` is for synchronous code such as `safeTry(() => JSON.parse(text))`. It does not catch the rejection of an async function.
-- Use them, rather than `try`/`catch`, for a failure the code can act on: answer with a specific HTTP error, fall back to another value, or carry on without the result.
+- Use them for a failure the code can act on: answer with a specific HTTP error, fall back to another value, or carry on without the result. Still use `try`/`catch` when handling large blocks of code or multiple failures together.
 - Do not use them to turn an unexpected failure into a 500. Let it propagate, as described under Routes.
 - Check `error` before you use `data`. Until then TypeScript types `data` as possibly `null`.
 - Never drop the error, as in `const [, data] = await safeAwait(...)`. Handle it, log it or throw it again.
