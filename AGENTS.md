@@ -117,7 +117,7 @@ Queries run synchronously inside the server process, so two of them never interl
 
 - `src/env.ts` is the only file that reads `process.env`; lint rejects it anywhere else. Import `env` from `@/env`.
 - When you add a variable, add it to `src/env.ts`, `.env.example` and the table in `README.md`. Add it to `compose.yml` too, as `NAME: ${NAME:-}`, or the container never sees the value.
-- Validate a variable as what it is: `z.ipv4()` for an address, `z.url()` for a URL, `z.coerce.number()` for a number, `z.stringbool()` for a flag.
+- Validate a variable as what it is: `z.ipv4()` and `z.ipv6()` for an address, `z.url()` for a URL, `z.coerce.number()` for a number, `z.stringbool()` for a flag.
 - Give a variable a default when it can have one. Without a default, nothing that imports `env` starts until the variable is set: set it in `test/setup.ts` and in `childEnv` of `test/helpers.ts` for the tests, and under `env` of the `docker` job in `.github/workflows/ci.yml`.
 
 ### Code style
@@ -152,7 +152,6 @@ The template leaves out what each project needs in its own way. These playbooks 
 
 | Task | File |
 | --- | --- |
-| Add authentication: API keys or users who log in | [.agents/skills/add-auth/SKILL.md](.agents/skills/add-auth/SKILL.md) |
 | Generate an OpenAPI document from the routes | [.agents/skills/add-openapi/SKILL.md](.agents/skills/add-openapi/SKILL.md) |
 | Let browsers on other origins call the API (CORS) | [.agents/skills/add-cors/SKILL.md](.agents/skills/add-cors/SKILL.md) |
 | Send security headers | [.agents/skills/add-security-headers/SKILL.md](.agents/skills/add-security-headers/SKILL.md) |

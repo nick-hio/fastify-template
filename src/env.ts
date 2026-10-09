@@ -5,7 +5,7 @@ import { z } from "zod";
 const proxyAddresses = z
     .string()
     .transform((value) => value.split(",").map((address) => address.trim()))
-    .pipe(z.array(z.union([z.ipv4(), z.cidrv4()])));
+    .pipe(z.array(z.union([z.ipv4(), z.cidrv4(), z.ipv6(), z.cidrv6()])));
 
 /**
  * The only place that reads `process.env`. Everything else imports `env`.
@@ -17,7 +17,13 @@ export const env = createEnv({
 
         LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
-        APP_HOST: z.ipv4("Must be an IPv4 address").default("0.0.0.0"),
+        /** The address to listen on. `::` is every IPv6 address, and on most systems every IPv4 address too. */
+        APP_HOST: z
+            .union(
+                [z.ipv4(), z.ipv6(), z.literal("localhost")],
+                "Must be an IPv4 address, an IPv6 address or localhost",
+            )
+            .default("0.0.0.0"),
 
         APP_PORT: z.coerce.number("Must be a valid port number").int().min(1).max(65535).default(3000),
 
@@ -31,7 +37,7 @@ export const env = createEnv({
         TRUST_PROXY: z
             .union(
                 [z.literal("false").transform(() => false as const), proxyAddresses],
-                "Must be a comma-separated list of IPv4 addresses and CIDR ranges, such as 127.0.0.1 or 172.16.0.0/12",
+                "Must be a comma-separated list of IP addresses and CIDR ranges, such as 127.0.0.1 or 172.16.0.0/12",
             )
             .default(false),
 

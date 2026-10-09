@@ -51,10 +51,10 @@ Every variable is optional.
 | --- | --- | --- |
 | `NODE_ENV` | `"production"` | `"development"`, `"production"` or `"test"`. `bun run dev` sets `"development"` |
 | `LOG_LEVEL` | `"info"` | `"fatal"`, `"error"`, `"warn"`, `"info"`, `"debug"`, `"trace"` or `"silent"` |
-| `APP_HOST` | `"0.0.0.0"` | IPv4 address the server binds to |
+| `APP_HOST` | `"0.0.0.0"` | Address the server listens on: an IPv4 address, an IPv6 address or `"localhost"`. `"0.0.0.0"` is every IPv4 address. `"::"` is every IPv6 address, and on Linux every IPv4 address as well. An IPv4 client then has an address like `::ffff:203.0.113.7` |
 | `APP_PORT` | `3000` | Port the server listens on |
 | `DATA_DIR` | `"./data"` | Directory that holds the SQLite database. The Docker image sets it to `/data` |
-| `TRUST_PROXY` | `false` | The reverse proxies in front of the server, as a comma-separated list of IPv4 addresses and CIDR ranges, such as `"127.0.0.1"` or `"172.16.0.0/12"`. The server takes the client address, host and protocol from the `X-Forwarded-*` headers of requests that they send, and from no one else. Name the proxies and nothing more: a client can write these headers too |
+| `TRUST_PROXY` | `false` | The reverse proxies in front of the server, as a comma-separated list of IP addresses and CIDR ranges, such as `"127.0.0.1"`, `"172.16.0.0/12"` or `"fd00::/8"`. The server takes the client address, host and protocol from the `X-Forwarded-*` headers of requests that they send, and from no one else. Name the proxies and nothing more: a client can write these headers too |
 | `REQUEST_TIMEOUT_MS` | `30000` | A request that has no response after this many milliseconds is answered with 503 |
 | `SHUTDOWN_TIMEOUT_MS` | `8000` | On shutdown, how many milliseconds the server waits for open requests before it exits anyway. Keep it below the stop timeout of whatever runs the server, which is 10 seconds for Docker |
 
@@ -116,7 +116,7 @@ The second command removes what is left of the old write-ahead log. SQLite could
 
 - [AGENTS.md](AGENTS.md) describes the commands, layout and conventions. Most coding agents read it automatically. `CLAUDE.md` imports it for Claude Code.
 - [.agents/skills/](.agents/skills) holds step-by-step playbooks for the common tasks: starting a new project, adding an endpoint, changing the database schema and working on the Docker image. `.claude/skills` is a symlink to it, so Claude Code loads the same playbooks as skills.
-- The same directory has playbooks for what the template leaves out on purpose, because each project needs it differently: authentication, OpenAPI documentation, CORS, security headers, rate limiting, metrics, an MCP server and publishing the Docker image. [AGENTS.md](AGENTS.md#playbooks) lists them all.
+- The same directory has playbooks for what the template leaves out on purpose, because each project needs it differently: OpenAPI documentation, CORS, security headers, rate limiting, metrics, an MCP server and publishing the Docker image. [AGENTS.md](AGENTS.md#playbooks) lists them all.
 - `bun run check` is the single command an agent runs to confirm a change.
 - `bun run bundle` writes `bundle.tar.gz` with everything a new project needs, for agents that take a file upload instead of a repository. The archive leaves out the `.claude/skills` symlink.
 

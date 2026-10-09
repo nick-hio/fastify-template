@@ -94,7 +94,8 @@ describe("process", () => {
         expect((await direct.waitForLog(isIncoming("/whoami"))).req?.remoteAddress).toBe("127.0.0.1");
 
         // The proxy appends the address it saw, so the last entry is the one to believe. The first is client input.
-        const proxied = await start({ TRUST_PROXY: "127.0.0.1" });
+        // The IPv6 range trusts no one here. It is in the list to show that the server starts with one.
+        const proxied = await start({ TRUST_PROXY: "fd00::/8, 127.0.0.1" });
         await fetch(`${proxied.url}/whoami`, { headers });
         expect((await proxied.waitForLog(isIncoming("/whoami"))).req?.remoteAddress).toBe("203.0.113.7");
     });
