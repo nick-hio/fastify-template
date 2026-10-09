@@ -15,6 +15,10 @@ export const buildServer = async () => {
         logger: {
             level: env.LOG_LEVEL,
         },
+        // `req.ip`, `req.host` and `req.protocol` follow the `X-Forwarded-*` headers of these proxies.
+        trustProxy: env.TRUST_PROXY,
+        // Covers the whole request, the upload of its body included. Under Bun, `requestTimeout` has no effect.
+        handlerTimeout: env.REQUEST_TIMEOUT_MS,
     }).withTypeProvider<ZodTypeProvider>();
 
     fastify.setValidatorCompiler(validatorCompiler);

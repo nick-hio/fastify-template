@@ -2,18 +2,27 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # the server writes to the data directory, so run it as the owner of that directory (uid:gid)
+    user: ${CONTAINER_USER:-1000:1000}
     ports:
       # published on every host interface, use "127.0.0.1:3000:3000" to keep it behind a reverse proxy
       - "${APP_PORT:-3000}:3000"
     environment:
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # an empty value means: use the default from src/env.ts
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-}
     volumes:
-      - data:/data
+      # the host directory that holds the database
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /data
+        bind:
+          # Docker would create a missing directory as root, which the server cannot write to
+          create_host_path: false
     read_only: true
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  data:

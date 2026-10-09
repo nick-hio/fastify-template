@@ -14,7 +14,7 @@ const route: FastifyPluginAsyncZod = async (fastify) => {
             },
         },
         async () => {
-            await db.run(sql`SELECT 1`);
+            db.run(sql`SELECT 1`);
 
             return { status: "ok" as const };
         },

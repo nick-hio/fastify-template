@@ -4,7 +4,7 @@ import { seed } from "@/db/init/seed";
 
 export const init = async (log: FastifyBaseLogger): Promise<void> => {
     try {
-        await migrate(log);
+        migrate(log);
         await seed(log);
     } catch (e) {
         log.error("[INIT] Fatal initialization error");

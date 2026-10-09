@@ -8,11 +8,22 @@ let isShuttingDown = false;
 
 const shutdown = async (signal: NodeJS.Signals) => {
     if (isShuttingDown) {
-        return;
+        // A second signal, such as another Ctrl+C, means: stop waiting.
+        fastify.log.warn({ signal }, "Second shutdown signal received, exiting now");
+        db.$client.close();
+        process.exit(1);
     }
 
     isShuttingDown = true;
     fastify.log.info({ signal }, "Shutdown signal received");
+
+    // `close()` waits for the open requests to finish, so one that never does would keep the process alive
+    // until it is killed. Queries are synchronous, so none is running when this fires and closing is safe.
+    setTimeout(() => {
+        fastify.log.error({ timeoutMs: env.SHUTDOWN_TIMEOUT_MS }, "Shutdown timed out with requests still open");
+        db.$client.close();
+        process.exit(1);
+    }, env.SHUTDOWN_TIMEOUT_MS);
 
     try {
         await fastify.close();

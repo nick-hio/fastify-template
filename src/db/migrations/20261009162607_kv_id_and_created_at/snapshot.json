@@ -1,0 +1,73 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "0a6203fa-71ef-4f7c-996d-e9d0452e448d",
+  "prevIds": [
+    "5c281913-4249-4379-b36a-0c4dab6deb49"
+  ],
+  "ddl": [
+    {
+      "name": "kv",
+      "entityType": "tables"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "kv"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "key",
+      "entityType": "columns",
+      "table": "kv"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "value",
+      "entityType": "columns",
+      "table": "kv"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "kv"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "kv_pk",
+      "table": "kv",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "key"
+      ],
+      "nameExplicit": false,
+      "name": "kv_key_unique",
+      "entityType": "uniques",
+      "table": "kv"
+    }
+  ],
+  "renames": []
+}

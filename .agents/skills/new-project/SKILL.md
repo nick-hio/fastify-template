@@ -25,6 +25,7 @@ The template runs as it is. Keep it running at every step: change one thing, the
 4. **Remove the example** once a real table and route exist:
     - delete `src/routes/example.ts`, `test/example.test.ts`, `src/db/schema/kv.ts` and `src/db/seeds/kv.ts`
     - remove their lines from `src/routes/index.ts` and `src/db/seeds/index.ts`
+    - set `BODY_ROUTE` in `test/process.test.ts` to one of your own routes that reads a JSON body
 
 5. **Reset the migrations to one initial migration.** This is only safe now, before the project has ever been deployed:
 
@@ -43,13 +44,16 @@ The template runs as it is. Keep it running at every step: change one thing, the
 
     ```bash
     bun run check
+    mkdir -p data
     docker compose up --build --wait
     curl http://127.0.0.1:3000/health
     docker compose down
     ```
 
+    If the container is unhealthy with `Unable to open the database in '/data'`, your user is not uid 1000. Start it with `CONTAINER_USER="$(id -u):$(id -g)"`, see [docker-image](../docker-image/SKILL.md).
+
 9. **Retire this playbook.** Delete `.agents/skills/new-project/` and its row in the playbook table of `AGENTS.md`, and update the first paragraph of `AGENTS.md` so it describes the project instead of the template.
 
 ## What to keep
 
-Keep the structure, the scripts, the error handler, the `/health` route, the test setup and the Docker files. They are what the other playbooks and `AGENTS.md` describe.
+Keep the structure, the scripts, the error handler, the `/health` route, the backup command, the Docker files and every test file except `test/example.test.ts`. They are what the other playbooks and `AGENTS.md` describe, and the tests cover the parts of the template that stay.

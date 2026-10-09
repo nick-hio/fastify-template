@@ -50,14 +50,14 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
 
     The error handler in `src/plugins/error-handler.ts` does not cover tools. `runTool` is what keeps internal details, such as a database error, away from the client.
 
-3. **Write the tools.** One file per resource in `src/mcp/tools/`, named after the resource, like the files in `src/routes/`:
+3. **Write the tools.** One file per resource in `src/mcp/tools/`, named after the resource, like the files in `src/routes/`. This one is `src/mcp/tools/example.ts`:
 
     ```ts
     import type { McpServer } from "@modelcontextprotocol/server";
     import { eq } from "drizzle-orm";
     import type { FastifyBaseLogger } from "fastify";
     import { db } from "@/db";
-    import { kvKeySchema, kvSchema, kvTable } from "@/db/schema/kv";
+    import { kvCreateSchema, kvSchema, kvTable } from "@/db/schema/kv";
     import { runTool, toolError } from "@/mcp/utils";
 
     export const registerExampleTools = (mcp: McpServer, log: FastifyBaseLogger) => {
@@ -65,7 +65,7 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
             "get-entry",
             {
                 description: "Return the entry stored under a key.",
-                inputSchema: kvKeySchema,
+                inputSchema: kvCreateSchema.pick({ key: true }),
                 outputSchema: kvSchema,
             },
             ({ key }) =>
@@ -73,7 +73,7 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
                     const [entry] = await db.select().from(kvTable).where(eq(kvTable.key, key)).limit(1);
 
                     if (!entry) {
-                        return toolError("Key Not Found");
+                        return toolError("Entry Not Found");
                     }
 
                     return { content: [{ type: "text", text: JSON.stringify(entry) }], structuredContent: entry };
@@ -119,7 +119,7 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
 
     The endpoint answers 403 unless the `Host` header of the request is on this list, and the default list is `localhost`, `127.0.0.1` and `[::1]`. A deployed server therefore needs its public hostname here, for example `MCP_ALLOWED_HOSTS="api.example.com"`. Setting the variable replaces the default list.
 
-    Add the variable to `.env.example`, to the table in `README.md` and to `compose.yml` as `MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}`.
+    Add the variable to `.env.example` as `MCP_ALLOWED_HOSTS="localhost,127.0.0.1,[::1]"`, to the table in `README.md` and to `compose.yml` as `MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}`.
 
 6. **Register the plugin** in `src/server.ts`, with the other plugins and before the routes:
 
@@ -182,7 +182,7 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     };
     ```
 
-    Then cover each tool in `test/mcp.test.ts`, in a `describe` block set up like the one in `test/example.test.ts`: the success case, each `toolError` and one call with invalid arguments.
+    Then cover each tool in `test/mcp.test.ts`, in a `describe` block set up like the one in `test/example.test.ts`: the success case, each `toolError` and one call with invalid arguments. The SDK answers invalid arguments itself, with `isError: true` and a text that starts with `Input validation error`.
 
     ```ts
     import type { CallToolResult, ListToolsResult } from "@modelcontextprotocol/server";
@@ -198,11 +198,11 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
             arguments: { key: "DOES_NOT_EXIST" },
         });
         expect(result.isError).toBe(true);
-        expect(result.content).toEqual([{ type: "text", text: "Key Not Found" }]);
+        expect(result.content).toEqual([{ type: "text", text: "Entry Not Found" }]);
     });
     ```
 
-9. **Update the documentation.** Add `POST /mcp` to the API table in `README.md` and `mcp/` to the layout in `AGENTS.md`.
+9. **Update the documentation.** Add `POST /mcp` to the API table in `README.md`. In the layout in `AGENTS.md`, add `mcp/` and name `mcpRequest()` on the line of `test/helpers.ts`.
 
 10. **Verify** with `bun run check`. To call the endpoint by hand, run `bun run dev` and send:
 
@@ -243,8 +243,10 @@ export const verifier: OAuthTokenVerifier = {
 };
 ```
 
-- `MCP_TOKEN` has no default, so the server does not start without it. Give it a value in `.env.example`, in `compose.yml` and in the `docker` job of `.github/workflows/ci.yml`, and correct the sentence in `README.md` that says every variable is optional.
-- For the tests, set `process.env.MCP_TOKEN` in `test/setup.ts` and send it from `mcpRequest` as an `authorization` header.
+- `MCP_TOKEN` has no default, so nothing that reads the environment starts without it: the server, `bun run db:generate`, `bun run db:studio` and `bun run db:backup`.
+- Give it a value in `.env.example` and add a row for it to the table in `README.md`. Pass it through `compose.yml` as `MCP_TOKEN: ${MCP_TOKEN:-}`, and set a value for the `docker` job of `.github/workflows/ci.yml` under `env`. Correct the sentence that says every variable is optional, in `README.md` and at the top of `.env.example`.
+- For the tests, set `process.env.MCP_TOKEN` in `test/setup.ts`. A process that a test starts does not get what that file sets, so also add `MCP_TOKEN: env.MCP_TOKEN` next to `NODE_ENV` in `childEnv` of `test/helpers.ts`. Without it, every test that starts a process fails. Send the token from `mcpRequest` as the header ``authorization: `Bearer ${env.MCP_TOKEN}` ``. Add a test for a request without a token and one for a wrong token. Both get a 401.
+- The `curl` from step 10 now needs `-H "authorization: Bearer $MCP_TOKEN"`.
 - To accept tokens from an OAuth provider instead, verify the token in `verifyAccessToken` and return its real client, scopes and expiry.
 - A handler reads the caller from its last argument: `(args, ctx) => ...`, or `(ctx) => ...` for a tool without `inputSchema`, then `ctx.http?.authInfo`.
 
@@ -254,8 +256,10 @@ Add it to the matching file in `src/mcp/tools/`, or to a new file that you regis
 
 ## How the endpoint differs from a route
 
-- Its responses are JSON-RPC, not the `{ statusCode, error, message }` body of the other routes. Rejected tokens get an OAuth body, `{ error, error_description }`.
-- A failed tool call is still HTTP 200. The failure is in the result, as `isError: true`.
+- Its responses are JSON-RPC, not the `{ statusCode, error, message }` body of the other routes. Rejected tokens get an OAuth body, `{ error, error_description }`. Only a request that fails before it reaches the plugin, such as a body that is not JSON or is too large, gets the body of the other routes.
+- A failed tool call is still HTTP 200. The failure is in the result, as `isError: true`. A call to a tool that does not exist is also HTTP 200, with a JSON-RPC `error` and no `result`.
+- `REQUEST_TIMEOUT_MS` does not apply. A tool call that takes longer is not answered with 503, so give slow work in a tool a time limit of its own.
+- The plugin answers every method on `/mcp`. Anything but `POST` gets a 405.
 - The request log shows every call as `POST /mcp`. To log the method and tool name, pass `onRequestComplete: (event) => fastify.log.info(event, "MCP request completed")` to the plugin.
 
 ## Troubleshooting
@@ -264,8 +268,8 @@ Add it to the matching file in `src/mcp/tools/`, or to a new file that you regis
 | --- | --- |
 | 403 `Invalid Host: <name>` | The hostname is not in `MCP_ALLOWED_HOSTS`. Behind a reverse proxy, allow the `Host` value the proxy forwards |
 | 403 `Invalid Origin: <name>` | A browser-based client on another site. Pass its hostname in the plugin option `allowedOrigins` |
-| 400 `Unsupported protocol version` | The client speaks an older MCP revision, or the `MCP-Protocol-Version` header is missing |
-| 400 `the request headers and body disagree` | The `Mcp-Method` header, or `Mcp-Name` on a tool call, is missing or differs from the body |
+| 400 `Unsupported protocol version` | The client speaks an older MCP revision |
+| 400 `the request headers and body disagree` | The `MCP-Protocol-Version` or `Mcp-Method` header, or `Mcp-Name` on a tool call, is missing or differs from the body |
 | 401 `Token has no expiration time` | The verifier returned no `expiresAt` |
 | `Output validation error` in a tool result | `structuredContent` is missing or does not match `outputSchema` |
 | Typecheck fails on `transport` | The option does not match the installed version, see step 6 |
