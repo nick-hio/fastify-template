@@ -57,6 +57,28 @@ test/
 - Log with `req.log` inside handlers and `fastify.log` elsewhere, not `console`.
 - Read the client address with `getRequestIP(req)` from `@/utils`. It honours proxy headers only when `TRUST_PROXY` is enabled.
 
+### Error handling
+
+`safeAwait` and `safeTry` from `@/utils` return a failure instead of throwing it. The result is a tuple: `[null, data]` on success, `[error, null]` on failure.
+
+```ts
+const [error, response] = await safeAwait(fetch(url));
+
+if (error) {
+    req.log.warn({ err: error }, "Upstream request failed");
+    throw fastify.httpErrors.badGateway("Upstream Unavailable");
+}
+
+// `response` is a `Response` from here on, not `Response | null`
+```
+
+- Pass a promise to `safeAwait` and a function to `safeTry`. `safeTry` is for synchronous code such as `safeTry(() => JSON.parse(text))`. It does not catch the rejection of an async function.
+- Use them for a failure the code can act on: answer with a specific HTTP error, fall back to another value, or carry on without the result. Still use `try`/`catch` when handling large blocks of code or multiple failures together.
+- Do not use them to turn an unexpected failure into a 500. Let it propagate, as described under Routes.
+- Check `error` before you use `data`. Until then TypeScript types `data` as possibly `null`.
+- Never drop the error, as in `const [, data] = await safeAwait(...)`. Handle it, log it or throw it again.
+- `error` is typed as `Error` without a runtime check. Narrow it with `instanceof` before relying on a specific class. To name another type, pass both type arguments: `safeTry<Config, SyntaxError>(...)`.
+
 ### Database
 
 - Import the client as `import { db } from "@/db"`.
@@ -85,14 +107,17 @@ test/
 
 ## Playbooks
 
-Step-by-step instructions for common tasks live in `.claude/skills/`. Read the matching file before you start the task.
+Step-by-step instructions for common tasks live in `.agents/skills/`. Read the matching file before you start the task.
+
+`.claude/skills` is a symlink to that directory, which is how Claude Code finds the same files. Edit the files in `.agents/skills/` and do not replace the link with a directory.
 
 | Task | File |
 | --- | --- |
-| Turn this template into a new project | [.claude/skills/new-project/SKILL.md](.claude/skills/new-project/SKILL.md) |
-| Add or change an HTTP endpoint | [.claude/skills/add-endpoint/SKILL.md](.claude/skills/add-endpoint/SKILL.md) |
-| Add or change a table, column or seed | [.claude/skills/change-schema/SKILL.md](.claude/skills/change-schema/SKILL.md) |
-| Build, run or change the Docker image | [.claude/skills/docker-image/SKILL.md](.claude/skills/docker-image/SKILL.md) |
+| Turn this template into a new project | [.agents/skills/new-project/SKILL.md](.agents/skills/new-project/SKILL.md) |
+| Add or change an HTTP endpoint | [.agents/skills/add-endpoint/SKILL.md](.agents/skills/add-endpoint/SKILL.md) |
+| Add or change a table, column or seed | [.agents/skills/change-schema/SKILL.md](.agents/skills/change-schema/SKILL.md) |
+| Add an MCP server or an MCP tool | [.agents/skills/add-mcp-server/SKILL.md](.agents/skills/add-mcp-server/SKILL.md) |
+| Build, run or change the Docker image | [.agents/skills/docker-image/SKILL.md](.agents/skills/docker-image/SKILL.md) |
 
 ## Things that will trip you up
 

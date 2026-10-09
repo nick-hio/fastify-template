@@ -16,6 +16,8 @@ The template runs as it is. Keep it running at every step: change one thing, the
     bun run check
     ```
 
+    A project unpacked from `bundle.tar.gz` has no `.claude/skills`, because the archive cannot hold a symlink. Create it again with `mkdir -p .claude && ln -s ../.agents/skills .claude/skills`.
+
 2. **Name the project.** Set `name` in `package.json` and the matching `name` near the top of `bun.lock`, which Bun does not rewrite on its own. Rename the temporary directory prefix in `test/setup.ts` to match.
 
 3. **Build the first real feature next to the example.** Follow [change-schema](../change-schema/SKILL.md) for its tables and [add-endpoint](../add-endpoint/SKILL.md) for its routes. Leave the example in place while you do, as a working reference.
@@ -46,7 +48,7 @@ The template runs as it is. Keep it running at every step: change one thing, the
     docker compose down
     ```
 
-9. **Retire this playbook.** Delete `.claude/skills/new-project/` and its row in the playbook table of `AGENTS.md`, and update the first paragraph of `AGENTS.md` so it describes the project instead of the template.
+9. **Retire this playbook.** Delete `.agents/skills/new-project/` and its row in the playbook table of `AGENTS.md`, and update the first paragraph of `AGENTS.md` so it describes the project instead of the template.
 
 ## What to keep
 

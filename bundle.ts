@@ -12,6 +12,7 @@ const listed = await $`git ls-files --cached --others --exclude-standard`.text()
 const files: Record<string, string | Uint8Array> = {};
 for (const path of listed.split("\n")) {
     const file = Bun.file(path);
+    // `exists()` is false for the `.claude/skills` symlink, which is left out: the archive holds file contents only.
     if (path && !TEMPLATE_ONLY.has(path) && (await file.exists())) {
         files[path] = await file.bytes();
     }

@@ -21,6 +21,19 @@ export const getRequestIP = (request: FastifyRequest) => {
     );
 };
 
+/**
+ * Awaits a promise and returns its outcome instead of throwing:
+ * `[null, data]` when it resolves, `[error, null]` when it rejects.
+ * Check `error` first. After that, TypeScript knows that `data` is not `null`.
+ *
+ * `error` is whatever was thrown, typed as `E` without a runtime check.
+ *
+ * @example
+ * const [error, response] = await safeAwait(fetch(url));
+ * if (error) {
+ *     throw fastify.httpErrors.badGateway("Upstream Unavailable");
+ * }
+ */
 export const safeAwait = async <T, E = Error>(promise: Promise<T>): Promise<[null, T] | [E, null]> => {
     try {
         const data = await promise;
@@ -30,6 +43,17 @@ export const safeAwait = async <T, E = Error>(promise: Promise<T>): Promise<[nul
     }
 };
 
+/**
+ * The synchronous counterpart of `safeAwait`: calls `func` and returns `[null, data]`,
+ * or `[error, null]` when it throws. Use `safeAwait` for anything that returns a promise,
+ * because a rejection happens after `func` has returned and is not caught here.
+ *
+ * @example
+ * const [error, config] = safeTry(() => JSON.parse(text) as Config);
+ * if (error) {
+ *     throw fastify.httpErrors.badRequest("Invalid Config");
+ * }
+ */
 export const safeTry = <T, E = Error>(func: () => T): [null, T] | [E, null] => {
     try {
         const data = func();
