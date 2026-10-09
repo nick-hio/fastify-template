@@ -12,7 +12,6 @@ const loadEnv = async (variables: Record<string, string>) => {
 describe("env", () => {
     test.each([
         ["false", false],
-        ["true", true],
         ["10.0.0.2", ["10.0.0.2"]],
         ["10.0.0.2, 172.16.0.0/12", ["10.0.0.2", "172.16.0.0/12"]],
     ])("TRUST_PROXY=%p is read as %p", async (value, expected) => {
@@ -24,6 +23,8 @@ describe("env", () => {
         ["APP_HOST", "localhost"],
         ["APP_HOST", "::1"],
         ["APP_PORT", "70000"],
+        // it would take the client address from the first entry of X-Forwarded-For, which the client writes
+        ["TRUST_PROXY", "true"],
         ["TRUST_PROXY", "nginx"],
         ["TRUST_PROXY", "10.0.0.0/40"],
         ["REQUEST_TIMEOUT_MS", "0"],

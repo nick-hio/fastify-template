@@ -16,12 +16,17 @@ jobs:
       # installs the Bun version from "packageManager" in package.json
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # also fails when a schema file changed without a new migration
       - run: bun run check
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # the database lives in a host directory, which has to exist and belong to the user of the container
+      - run: mkdir data && echo "CONTAINER_USER=$(id -u):$(id -g)" >> "$GITHUB_ENV"
       # builds the image, starts it and waits for its health check to pass
       - run: docker compose up --build --wait
       - run: curl --fail http://127.0.0.1:3000/health
+      # the backup has to work on the read-only filesystem of the container
+      - run: docker compose exec -T app bun run db:backup && ls data/backups/*.db

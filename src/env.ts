@@ -26,12 +26,12 @@ export const env = createEnv({
 
         /**
          * The reverse proxies whose `X-Forwarded-*` headers are believed, as their addresses or CIDR ranges.
-         * `true` believes every sender, which is only safe when clients cannot reach the server directly.
+         * There is no `true`: it would believe the first address in `X-Forwarded-For`, which the client writes.
          */
         TRUST_PROXY: z
             .union(
-                [z.stringbool(), proxyAddresses],
-                "Must be a boolean, or a comma-separated list of IPv4 addresses and CIDR ranges",
+                [z.literal("false").transform(() => false as const), proxyAddresses],
+                "Must be a comma-separated list of IPv4 addresses and CIDR ranges, such as 127.0.0.1 or 172.16.0.0/12",
             )
             .default(false),
 

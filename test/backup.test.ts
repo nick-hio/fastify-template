@@ -8,28 +8,26 @@ import { backup } from "@/db/backup";
 import { DATA_DIR } from "@/db/config";
 import { runBun, useProcess, useServer } from "./helpers";
 
-const notes = (database: Database) => database.query("SELECT note FROM scratch").all();
-
 describe("backup", () => {
     useServer();
 
     // A table of its own, so these tests do not depend on the tables of the project.
     beforeAll(() => {
-        db.run(sql`CREATE TABLE scratch (note text NOT NULL)`);
+        db.run(sql`CREATE TABLE backup_scratch (note text NOT NULL)`);
     });
 
     afterAll(() => {
-        db.run(sql`DROP TABLE scratch`);
+        db.run(sql`DROP TABLE backup_scratch`);
     });
 
     test("writes a copy that keeps the data when the database changes afterwards", () => {
-        db.run(sql`INSERT INTO scratch (note) VALUES ('keep me')`);
+        db.run(sql`INSERT INTO backup_scratch (note) VALUES ('keep me')`);
 
         const path = backup(join(DATA_DIR, "backups", "copy.db"));
-        db.run(sql`DELETE FROM scratch`);
+        db.run(sql`DELETE FROM backup_scratch`);
 
         const copy = new Database(path, { readonly: true });
-        expect(notes(copy)).toEqual([{ note: "keep me" }]);
+        expect(copy.query("SELECT note FROM backup_scratch").all()).toEqual([{ note: "keep me" }]);
         copy.close();
     });
 
@@ -77,7 +75,7 @@ describe("backup and restore", () => {
         expect((await fetch(`${restored.url}/health`)).status).toBe(200);
 
         const reader = new Database(databasePath, { readonly: true });
-        expect(notes(reader)).toEqual([{ note: "keep me" }]);
+        expect(reader.query("SELECT note FROM scratch").all()).toEqual([{ note: "keep me" }]);
         reader.close();
     });
 });
