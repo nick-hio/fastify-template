@@ -1,0 +1,11 @@
+# Ignore everything, then allow only what the image build needs.
+# A new top-level file or directory that the build uses must be added here.
+*
+
+!package.json
+!bun.lock
+!bunfig.toml
+!tsconfig.json
+!drizzle.config.ts
+!src
+!test
