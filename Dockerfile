@@ -4,7 +4,7 @@
 # see all versions at https://hub.docker.com/r/oven/bun/tags
 ARG BUN_VERSION=1.4.2
 
-FROM oven/bun:${BUN_VERSION}-slim AS base
+FROM oven/bun:${BUN_VERSION}-alpine AS base
 WORKDIR /usr/src/app
 
 # install all dependencies, including devDependencies
@@ -14,11 +14,12 @@ COPY package.json bun.lock bunfig.toml ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
-# install with --production (exclude devDependencies)
+# exclude devDependencies and automatically installed peers (including compiler/type packages)
+# packages needed at runtime must be listed in dependencies, including runtime peers
 FROM base AS prod-deps
 COPY package.json bun.lock bunfig.toml ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile --production
+    bun install --frozen-lockfile --production --omit=peer
 
 # copy all (non-ignored) project files, then typecheck and test them
 # the release stage copies from here, so a failing check fails the build
