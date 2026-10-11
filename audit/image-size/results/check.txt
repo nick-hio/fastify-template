@@ -1,0 +1,106 @@
+$ bun run typecheck && bun run lint && bun test
+$ tsc --noEmit
+$ biome check
+Checked 55 files in 18ms. No fixes applied.
+bun test v1.4.2 (744846f84)
+
+test/server.test.ts:
+(pass) server > GET /health reports ok [9.23ms]
+(pass) server > unknown routes return a JSON 404 [0.52ms]
+(pass) server > building the server again does not re-apply migrations [8.63ms]
+
+test/db.test.ts:
+(pass) database > is opened with write-ahead logging, a busy timeout and foreign keys [0.18ms]
+(pass) database > a write waits for another process to release the database [333.76ms]
+(pass) database > a transaction is rolled back as a whole when its callback throws [1.90ms]
+
+test/utils.test.ts:
+(pass) safeAwait > returns [null, data] when the promise resolves [0.25ms]
+(pass) safeAwait > returns [error, null] when the promise rejects [0.26ms]
+(pass) safeAwait > wraps a rejection with null in an Error [0.22ms]
+(pass) safeAwait > wraps a rejection with undefined in an Error [0.03ms]
+(pass) safeAwait > wraps a rejection with false in an Error [0.01ms]
+(pass) safeAwait > wraps a rejection with 0 in an Error
+(pass) safeAwait > wraps a rejection with "" in an Error [0.02ms]
+(pass) safeTry > returns [null, data] when the function returns [0.12ms]
+(pass) safeTry > returns [error, null] when the function throws [0.10ms]
+(pass) safeTry > wraps a thrown null in an Error [0.09ms]
+(pass) safeTry > wraps a thrown undefined in an Error [0.02ms]
+(pass) safeTry > wraps a thrown false in an Error [0.01ms]
+(pass) safeTry > wraps a thrown 0 in an Error
+(pass) safeTry > wraps a thrown "" in an Error
+
+test/env.test.ts:
+(pass) env > APP_HOST="127.0.0.1" is accepted [42.25ms]
+(pass) env > APP_HOST="::" is accepted [26.00ms]
+(pass) env > APP_HOST="::1" is accepted [23.54ms]
+(pass) env > APP_HOST="localhost" is accepted [25.29ms]
+(pass) env > TRUST_PROXY="false" is read as false [23.81ms]
+(pass) env > TRUST_PROXY="10.0.0.2" is read as [ "10.0.0.2" ] [29.82ms]
+(pass) env > TRUST_PROXY="10.0.0.2, 172.16.0.0/12" is read as [ "10.0.0.2", "172.16.0.0/12" ] [23.19ms]
+(pass) env > TRUST_PROXY="::1, fd00::/8" is read as [ "::1", "fd00::/8" ] [34.07ms]
+(pass) env > refuses to start with APP_HOST="example.com" [23.21ms]
+(pass) env > refuses to start with APP_HOST="127.0.0" [25.16ms]
+(pass) env > refuses to start with APP_HOST="[::1]" [25.55ms]
+(pass) env > refuses to start with APP_PORT="70000" [34.15ms]
+(pass) env > refuses to start with TRUST_PROXY="true" [26.51ms]
+(pass) env > refuses to start with TRUST_PROXY="nginx" [24.22ms]
+(pass) env > refuses to start with TRUST_PROXY="10.0.0.0/40" [26.50ms]
+(pass) env > refuses to start with TRUST_PROXY="fd00::/129" [24.04ms]
+(pass) env > refuses to start with REQUEST_TIMEOUT_MS="0" [23.05ms]
+(pass) env > refuses to start with SHUTDOWN_TIMEOUT_MS="soon" [25.89ms]
+
+test/error-handler.test.ts:
+(pass) error handler > hides the message of unexpected errors [3.37ms]
+(pass) error handler > keeps the message of client errors [1.91ms]
+(pass) error handler > lists every invalid field of a request as its own issue [4.68ms]
+(pass) error handler > names the part of the request that is invalid [2.30ms]
+(pass) error handler > reports a body that is not JSON without issues [2.62ms]
+
+test/process.test.ts:
+(pass) process > closes cleanly on SIGTERM [224.71ms]
+(pass) process > answers a request that takes too long with 503 and ends its connection [410.89ms]
+(pass) process > stops waiting for an open request when the shutdown deadline passes [400.64ms]
+(pass) process > exits at once on a second signal [215.58ms]
+(pass) process > takes the client address from X-Forwarded-For only when the sender is a trusted proxy [340.06ms]
+(pass) process > starts in a data directory with URL characters in its name [170.65ms]
+
+test/migrations.test.ts:
+(pass) the migrations are up to date with the schema files [320.71ms]
+
+test/example.test.ts:
+(pass) /example > POST creates an entry with a generated id and timestamp [3.30ms]
+(pass) /example > POST trims surrounding whitespace [0.75ms]
+(pass) /example > POST ignores fields that the database generates [0.64ms]
+(pass) /example > POST returns 409 for a key that already exists [0.98ms]
+(pass) /example > the database refuses an entry without a key, also when it is written with plain SQL [0.11ms]
+(pass) /example > GET /:id returns the entry [1.13ms]
+(pass) /example > PATCH /:id changes the value and nothing else [1.64ms]
+(pass) /example > DELETE /:id removes the entry and returns no content [0.97ms]
+(pass) /example > GET /:id returns 404 for an id that does not exist [0.54ms]
+(pass) /example > PATCH /:id returns 404 for an id that does not exist [0.54ms]
+(pass) /example > DELETE /:id returns 404 for an id that does not exist [0.38ms]
+(pass) /example > GET lists the entries in pages that follow each other [2.40ms]
+(pass) /example > GET returns one page with every entry when they fit the default limit [0.70ms]
+(pass) /example > GET does not announce another page when the last one is exactly full [0.74ms]
+(pass) /example > rejects a limit of 0 with 400 [0.55ms]
+(pass) /example > rejects a limit above 100 with 400 [0.38ms]
+(pass) /example > rejects a cursor that is not a number with 400 [0.39ms]
+(pass) /example > rejects an id that is not a number with 400 [0.40ms]
+(pass) /example > rejects an id of 0 with 400 [0.37ms]
+(pass) /example > rejects a missing body with 400 [0.35ms]
+(pass) /example > rejects a missing value with 400 [0.54ms]
+(pass) /example > rejects a blank key with 400 [0.48ms]
+(pass) /example > rejects a key longer than 128 characters with 400 [0.45ms]
+(pass) /example > rejects a non-string value with 400 [0.48ms]
+
+test/backup.test.ts:
+(pass) backup > writes a copy that keeps the data when the database changes afterwards [0.88ms]
+(pass) backup > names the copy after the current time when no destination is given [0.54ms]
+(pass) backup > does not overwrite an existing file [0.47ms]
+(pass) backup and restore > a backup taken while the server runs can be restored [360.79ms]
+
+ 78 pass
+ 0 fail
+ 168 expect() calls
+Ran 78 tests across 9 files. [3.50s]

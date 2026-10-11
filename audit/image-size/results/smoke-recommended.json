@@ -1,0 +1,21 @@
+{
+  "tag": "recommended",
+  "data_dir": "/home/t3svc/workloads/fastify-size-audit/recommended-0cfo_cdk",
+  "checks": [
+    "HTTP health",
+    "both migrations applied",
+    "create, read, cursor list, update, conflict and validation",
+    "cursor advances",
+    "live backup integrity and persisted content",
+    "outbound HTTPS and DNS",
+    "non-root UID override and read-only application directory",
+    "Docker HEALTHCHECK",
+    "SIGTERM graceful shutdown, exit 0",
+    "restart persistence, migrations not repeated, delete and 404"
+  ],
+  "expected_limitations": [],
+  "backup_script_exit": 0,
+  "https_exit": 0,
+  "https_output": "200\n",
+  "ok": true
+}
