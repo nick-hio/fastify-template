@@ -1,6 +1,6 @@
 ---
 name: new-project
-description: Steps for turning this Fastify template into a new API or app, covering renaming, replacing the example route and table, and resetting migrations. Use this once, at the start, when asked to create a project from this template or when the repository still has the `/example` route.
+description: Steps for turning this Fastify template into a new API or app, covering renaming, removing the template-only files, replacing the example route and table, and resetting migrations. Use this once, at the start, when asked to create a project from this template or when the repository still has the `/example` route.
 ---
 
 # Start a new project from the template
@@ -20,30 +20,39 @@ The template runs as it is. Keep it running: change one thing, then run `bun run
 
 2. **Name the project.**
     - Set `name` in `package.json`.
-    - Set the matching `name` near the top of `bun.lock`. Bun does not rewrite it.
+    - Set the matching `name` near the top of `bun.lock`. Bun does not rewrite it, and no check fails while it is stale.
     - Rename the temporary directory prefix in `test/setup.ts`.
+    - Set the title of `README.md`.
 
-3. **Build the first real feature next to the example.** Use [change-schema](../change-schema/SKILL.md) for its tables and [add-endpoint](../add-endpoint/SKILL.md) for its routes. Keep the example as a working reference until then.
+3. **Remove the template-only files.** A project from `bundle.tar.gz` already lacks the files, but not the references to them.
+    - Delete `bundle.ts` and the `bundle` script in `package.json`.
+    - Remove `"bundle.ts"` from `biome.json`, the `bundle.tar.gz` lines in `.gitignore`, and the `bun run bundle` lines in `README.md`.
+    - `LICENSE` is the template's license. Keep it only if the project takes the same license. Otherwise delete it and the License section of `README.md`.
 
-4. **Remove the example** once a real table and route exist:
+    **Only a starter?** If the task asks for no feature yet, go to step 9 and stop after it. Keep the example, the migrations and this playbook for the first real feature.
+
+4. **Build the first real feature next to the example.** Use [change-schema](../change-schema/SKILL.md) for its tables and [add-endpoint](../add-endpoint/SKILL.md) for its routes. Keep the example as a working reference until then.
+
+5. **Remove the example** once a real table and route exist:
     - Delete `src/routes/example.ts`, `test/example.test.ts`, `src/db/schema/kv.ts` and `src/db/seeds/kv.ts`.
     - Remove their lines from `src/routes/index.ts` and `src/db/seeds/index.ts`.
     - Set `BODY_ROUTE` in `test/process.test.ts` to one of your routes that reads a JSON body.
 
-5. **Reset the migrations to one initial migration.** This is safe only now, before the first deploy:
+6. **Reset the migrations to one initial migration.** This is safe only now, before the first deploy:
 
     ```bash
     rm -rf src/db/migrations data
     bun run db:generate --name init
     ```
 
-    The project needs at least one migration, so do this after step 3, not before.
+    - The project needs at least one migration, so do this after step 4, not before.
+    - If `.env` sets `DATA_DIR`, delete that directory instead of `data`. Its database still holds the old tables and migration records.
 
-6. **Add the configuration the project needs** to `src/env.ts`, `.env.example`, `README.md` and, if the container needs it, `compose.yml`.
+7. **Add the configuration the project needs** to `src/env.ts`, `.env.example`, `README.md` and, if the container needs it, `compose.yml`.
 
-7. **Rewrite `README.md`** for the project: what it does, its endpoints, its environment variables. Remove the sections about the template.
+8. **Rewrite `README.md`** for the project: what it does, its endpoints, its environment variables. Remove the sections about the template.
 
-8. **Verify.**
+9. **Verify.**
 
     ```bash
     bun run check
@@ -53,9 +62,10 @@ The template runs as it is. Keep it running: change one thing, then run `bun run
     docker compose down
     ```
 
-    Container unhealthy with `Unable to open the database in '/data'`? Your user is not uid 1000. Start it with `CONTAINER_USER="$(id -u):$(id -g)"`. See [docker-image](../docker-image/SKILL.md).
+    - Port 3000 taken? Set `APP_PORT` for `docker compose up`, and query that port.
+    - Container unhealthy with `Unable to open the database in '/data'`? Your user is not uid 1000. Start it with `CONTAINER_USER="$(id -u):$(id -g)"`. See [docker-image](../docker-image/SKILL.md).
 
-9. **Retire this playbook.**
+10. **Retire this playbook.**
     - Delete `.agents/skills/new-project/`.
     - Delete its row in the playbook table of `AGENTS.md`.
     - Rewrite the intro of `AGENTS.md` to describe the project, not the template.
