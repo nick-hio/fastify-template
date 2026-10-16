@@ -1,13 +1,13 @@
 ---
 name: add-security-headers
-description: Steps for adding security response headers to this Fastify server with the @fastify/helmet plugin, covering which headers suit a JSON API, the Content-Security-Policy, HSTS and tests. Use this when asked to add security headers or helmet, to harden the HTTP responses, to turn on HSTS, or when a security scan reports missing headers.
+description: Steps for adding security response headers with @fastify/helmet, covering which headers suit a JSON API, the Content-Security-Policy, HSTS and tests. Use this when asked to add security headers or helmet, to harden HTTP responses, to turn on HSTS, or when a security scan reports missing headers.
 ---
 
 # Add security headers
 
-[@fastify/helmet](https://github.com/fastify/fastify-helmet) adds the headers of [helmet](https://helmet.js.org) to every response. The template does not ship with it.
+[@fastify/helmet](https://github.com/fastify/fastify-helmet) adds the [helmet](https://helmet.js.org) headers to every response. The template does not ship with it.
 
-Helmet's defaults are written for a site that serves HTML pages. This server answers with JSON, so the plugin below changes three of them and keeps the rest. [Which headers and why](#which-headers-and-why) gives the reasons.
+Helmet's defaults suit HTML sites. This server answers with JSON, so the plugin below changes three defaults and keeps the rest. See [Which headers and why](#which-headers-and-why).
 
 ## Steps
 
@@ -32,13 +32,12 @@ Helmet's defaults are written for a site that serves HTML pages. This server ans
 
     /**
      * Adds the security headers to every response, error responses and 404s included.
-     * The values suit an API that answers with JSON. A route that serves HTML needs a policy of its own.
+     * The values suit a JSON API. A route that serves HTML needs a policy of its own.
      */
     export default fp(
         async (fastify) => {
             await fastify.register(helmet, {
-                // Helmet's default policy is written for pages with scripts and styles. An API has neither, so a
-                // browser that renders a response as a page may load nothing and may not show it in a frame.
+                // An API has no scripts or styles, so a response rendered as a page loads nothing and cannot be framed.
                 contentSecurityPolicy: {
                     useDefaults: false,
                     directives: {
@@ -48,7 +47,7 @@ Helmet's defaults are written for a site that serves HTML pages. This server ans
                 },
                 // the same as `frame-ancestors`, for browsers that do not know it
                 xFrameOptions: { action: "deny" },
-                // A browser remembers this header for the host name, so it is only sent when the deployment asks for it.
+                // A browser remembers this header for the host name, so send it only when the deployment asks.
                 strictTransportSecurity:
                     env.HSTS_MAX_AGE_SECONDS === undefined
                         ? false
@@ -59,11 +58,13 @@ Helmet's defaults are written for a site that serves HTML pages. This server ans
     );
     ```
 
-4. **Register it** in `src/server.ts` with `await fastify.register(securityHeaders);`, after `errorHandler` and before every other plugin that adds a hook, such as CORS or authentication.
+4. **Register it** in `src/server.ts` with `await fastify.register(securityHeaders);`. Put it after `errorHandler` and before any other plugin that adds a hook, such as CORS or authentication.
 
-    The headers are set in an `onRequest` hook, and hooks run in registration order. A plugin that answers a request in its own hook, as CORS does for a preflight and authentication for a 401, ends the request there, and a hook registered after it never runs. `sensible` and `errorHandler` add no hooks, so the order towards them does not matter.
+    - **Why:** helmet sets the headers in an `onRequest` hook. Hooks run in registration order.
+    - **Early answers:** a plugin that answers in its own hook (CORS preflight, authentication 401) ends the request. Later hooks never run.
+    - **`sensible` and `errorHandler`** add no hooks. The order relative to them does not matter.
 
-5. **Test it** in `test/security-headers.test.ts`, in a `describe` block that calls `useServer()`. Check a normal response, an error from the error handler and a 404:
+5. **Test it** in `test/security-headers.test.ts`, in a `describe` block that calls `useServer()`. Cover a normal response, a thrown error, a validation error and an unknown route:
 
     ```ts
     /** The headers that matter for an API. Helmet adds a few more that only act on HTML pages. */
@@ -86,9 +87,14 @@ Helmet's defaults are written for a site that serves HTML pages. This server ans
     });
     ```
 
-    `src/env.ts` is read once per test run, so test HSTS in processes of their own. Start one with `useProcess()` and `{ HSTS_MAX_AGE_SECONDS: "300" }` and expect `max-age=300`, and one without the variable and expect no header.
+    `src/env.ts` is read once per test run. Test HSTS in separate processes with `useProcess()`:
 
-6. **Update the documentation.** Add the variable to `.env.example`, to the table in `README.md` and to `compose.yml` as `HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-}`. In `AGENTS.md`, add to the Routes conventions that a route which serves HTML sets its own policy with the `helmet` route option.
+    - With `{ HSTS_MAX_AGE_SECONDS: "300" }`, expect `max-age=300`.
+    - Without the variable, expect no header.
+
+6. **Update the documentation.**
+    - Add the variable to `.env.example`, to the table in `README.md`, and to `compose.yml` as `HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-}`.
+    - In `AGENTS.md` Routes conventions, add: a route that serves HTML sets its own policy with the `helmet` route option.
 
 7. **Verify** with `bun run check`. To see the headers, run `bun run dev` and send `curl -i http://127.0.0.1:3000/health`.
 
@@ -96,22 +102,23 @@ Helmet's defaults are written for a site that serves HTML pages. This server ans
 
 | Header | Sent as | Reason |
 | --- | --- | --- |
-| `Content-Security-Policy` | `default-src 'none';frame-ancestors 'none'`, not helmet's default | The default allows the scripts, styles and images of a site. An API has none, so a response that a browser renders as a page may load nothing |
-| `Strict-Transport-Security` | Only when `HSTS_MAX_AGE_SECONDS` is set. Helmet's default is one year, subdomains included | It only means something over HTTPS, and this server speaks HTTP: whether TLS is in front of it is a fact of the deployment. A browser keeps the promise for the whole `max-age` |
-| `X-Frame-Options` | `DENY`, not `SAMEORIGIN` | No response is meant to be shown in a frame |
-| `X-Content-Type-Options` | `nosniff`, the default | Keeps a browser from reading a JSON response as HTML or script |
-| `Cross-Origin-Resource-Policy` | `same-origin`, the default | Other sites cannot embed a response with `<script>` or `<img>`. A `fetch` that CORS allows is not affected |
-| `Referrer-Policy` and six more | The defaults | They act on HTML pages or old browsers and do nothing for JSON. They stay because they cost little and cover a page the server may serve later |
+| `Content-Security-Policy` | `default-src 'none';frame-ancestors 'none'`, not helmet's default | The default allows a site's scripts, styles and images. An API has none, so a response rendered as a page loads nothing |
+| `Strict-Transport-Security` | Only when `HSTS_MAX_AGE_SECONDS` is set. Helmet's default is one year, subdomains included | Works only over HTTPS. TLS in front of this HTTP server is a deployment choice. A browser keeps the promise for the whole `max-age` |
+| `X-Frame-Options` | `DENY`, not `SAMEORIGIN` | No response belongs in a frame |
+| `X-Content-Type-Options` | `nosniff`, the default | Stops a browser reading JSON as HTML or script |
+| `Cross-Origin-Resource-Policy` | `same-origin`, the default | Other sites cannot embed a response with `<script>` or `<img>`. A CORS-allowed `fetch` still works |
+| `Referrer-Policy` and six more | The defaults | Act only on HTML pages or old browsers. Kept because they are cheap and cover a page the server may serve later |
 
-- Start HSTS low, such as `HSTS_MAX_AGE_SECONDS="300"`, and raise it to `31536000` (one year) once every client uses HTTPS. To take it back, set `0`: removing the variable leaves browsers with what they remember.
-- `includeSubDomains` is off, so the header speaks for this host name only.
+- **Start HSTS low**, such as `HSTS_MAX_AGE_SECONDS="300"`. Raise it to `31536000` (one year) once every client uses HTTPS.
+- **To take HSTS back**, set `0`. Removing the variable leaves browsers with what they remember.
+- **`includeSubDomains` is off**, so the header covers this host name only.
 
 ## One route
 
-An HTML page, such as a browsable API documentation UI, needs scripts and styles. `default-src 'none'` blocks them and the page stays blank. Give its route a policy of its own with the `helmet` route option, which replaces the plugin option of the same name. `sendPage` is the handler:
+An HTML page, such as an API docs UI, needs scripts and styles. `default-src 'none'` blocks them, so the page stays blank. Set its route's policy with the `helmet` route option, which replaces the plugin option. `sendPage` is the handler:
 
 ```ts
-// a page with a style of its own, which the policy of the API would block
+// a page with its own style, which the API policy would block
 const pagePolicy = {
     useDefaults: false,
     directives: { "default-src": ["'self'"], "style-src": ["'self'", "'unsafe-inline'"] },
@@ -119,12 +126,12 @@ const pagePolicy = {
 fastify.get("/page", { helmet: { contentSecurityPolicy: pagePolicy } }, sendPage);
 ```
 
-- The routes that another plugin registers take no route options. Register that plugin in a scope with an `onRequest` hook that calls `reply.header("content-security-policy", "...")`. A header set on the reply replaces the one from helmet.
-- `helmet: false` on a route sends none of the headers.
+- **Routes from another plugin** take no route options. Register that plugin in a scope with an `onRequest` hook that calls `reply.header("content-security-policy", "...")`. It replaces helmet's header.
+- **`helmet: false`** on a route sends none of the headers.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
-| A preflight or a 401 has no security headers | The plugin that answered is registered before this one, see step 4 |
-| A route's policy contains directives it does not list | `useDefaults: false` is missing, so helmet merged its default policy in |
+| A preflight or a 401 has no security headers | The answering plugin is registered before this one, see step 4 |
+| A route's policy has directives it does not list | `useDefaults: false` is missing, so helmet merged in its defaults |

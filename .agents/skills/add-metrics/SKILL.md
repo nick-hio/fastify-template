@@ -1,20 +1,19 @@
 ---
 name: add-metrics
-description: Steps for exposing Prometheus metrics from this Fastify server with a plugin built on @prometheus-io/client, covering request metrics, the token-protected `/metrics` endpoint, metrics of your own and tests. Use this when asked to add metrics, monitoring or a `/metrics` endpoint, to connect Prometheus or Grafana, or to add or change a metric.
+description: Steps for exposing Prometheus metrics from this Fastify server with @prometheus-io/client, covering request metrics, the token-protected `/metrics` endpoint, custom metrics and tests. Use this when asked to add metrics, monitoring or a `/metrics` endpoint, to connect Prometheus or Grafana, or to add or change a metric.
 ---
 
 # Add Prometheus metrics
 
-A plugin of the project's own collects process and request metrics with [@prometheus-io/client](https://github.com/prometheus/client_js) and serves them on `GET /metrics`, where a Prometheus server reads them. The template does not ship with it.
+A plugin collects process and request metrics with [@prometheus-io/client](https://github.com/prometheus/client_js) and serves them on `GET /metrics` for Prometheus to read. The template does not ship with it.
 
-- Use `@prometheus-io/client`. It replaces `prom-client`, which is deprecated. Most documentation still names `prom-client`, and `bun add prom-client` installs it without a warning. The classes have the same names.
-- Do not use `fastify-metrics`. By default it keeps all metrics in one registry per process, so the second server of a test run fails to start, and it serves `/metrics` to anyone.
-
-The endpoint is closed until it is configured: it exists only while `METRICS_TOKEN` is set, and it answers only a request that sends that token. Metrics name every route and show traffic, memory use and the runtime version, so they are not for the public.
+- **Use `@prometheus-io/client`**, not the deprecated `prom-client`. Most docs still name `prom-client`, and `bun add prom-client` gives no warning. The class names match.
+- **Not `fastify-metrics`.** Its default per-process registry makes the second server of a test run fail to start. It also serves `/metrics` to anyone.
+- **The endpoint is private.** It exists only while `METRICS_TOKEN` is set, and answers only requests with that token. Metrics expose every route, traffic, memory use and the runtime version.
 
 ## Steps
 
-1. **Install the client.** The code below is written for version 0.16.
+1. **Install the client.** The code below is for version 0.16.
 
     ```bash
     bun add @prometheus-io/client
@@ -27,7 +26,9 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
     METRICS_TOKEN: z.string().min(32, "Must be at least 32 characters").optional(),
     ```
 
-    Add it to `.env.example` as `METRICS_TOKEN=""`, to `compose.yml` as `METRICS_TOKEN: ${METRICS_TOKEN:-}` and to the table in `README.md`, and add `GET /metrics` to the API table there. An empty value reads as unset. `openssl rand -hex 32` prints a token. Never commit a real one.
+    - Add it to `.env.example` (`METRICS_TOKEN=""`), `compose.yml` (`METRICS_TOKEN: ${METRICS_TOKEN:-}`) and the variables table in `README.md`. Add `GET /metrics` to the API table there.
+    - An empty value counts as unset.
+    - `openssl rand -hex 32` prints a token. Never commit a real one.
 
 3. **Create the plugin** in `src/plugins/metrics.ts`:
 
@@ -57,8 +58,7 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
      */
     export default fp(
         async (fastify) => {
-            // One registry per server. The library's global registry would refuse the metrics of a second server
-            // in the same process, and the tests build several.
+            // One registry per server: the global registry refuses a second server's metrics, and tests build several.
             const registry = new Registry();
             fastify.decorate("metrics", registry);
 
@@ -89,8 +89,8 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
             });
 
             fastify.addHook("onResponse", async (req, reply) => {
-                // The pattern the route was registered with, such as `/example/:id`, and one fixed label for a request
-                // that matched no route. `req.url` is client input and would add a series for every URL anyone tries.
+                // The route pattern, such as `/example/:id`, or one fixed label when no route matched.
+                // Not `req.url`: it is client input and would add a series for every URL anyone tries.
                 const route = req.routeOptions.url ?? "unmatched";
 
                 if (route !== ENDPOINT) {
@@ -119,10 +119,10 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
     );
     ```
 
-    - The buckets are the defaults of the library, 5 ms to 10 s, written out so that they are easy to change. Add a boundary at each response time the project has to meet, because a quantile is only as exact as the buckets around it. Every bucket is one more series for each combination of method, route and status code.
-    - The route has no `schema`. Its response is text, which Fastify sends as it is, and a `headers` schema would answer a missing token with 400 instead of 401.
+    - **Buckets** are the library defaults (5 ms to 10 s). Add a boundary at each response-time target: a quantile is only as exact as its nearby buckets. Each bucket adds a series per method, route and status code combination.
+    - **No `schema`.** The response is text. A `headers` schema would answer a missing token with 400, not 401.
 
-4. **Register the plugin** in `src/server.ts`, after `sensible` and before the routes, because route files read `fastify.metrics` while they are registered:
+4. **Register the plugin** in `src/server.ts`, after `sensible` and before the routes. Route files read `fastify.metrics` at registration.
 
     ```ts
     import metrics from "@/plugins/metrics";
@@ -130,15 +130,15 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
     await fastify.register(metrics);
     ```
 
-    If the project builds an OpenAPI document, as [add-openapi](../add-openapi/SKILL.md) describes, register this plugin before that one. `/metrics` then stays out of the document.
+    With [add-openapi](../add-openapi/SKILL.md), register this plugin first, so `/metrics` stays out of the document.
 
-5. **Test it** in `test/metrics.test.ts`. Give the test run a token in `test/setup.ts`:
+5. **Test it** in `test/metrics.test.ts`. Set a token in `test/setup.ts`:
 
     ```ts
     process.env.METRICS_TOKEN = "test-metrics-token-0123456789abcdef";
     ```
 
-    A test reads the token from `env`, and resets the metrics before each test:
+    Read the token from `env` and reset the metrics before each test:
 
     ```ts
     // `test/setup.ts` sets the token for the whole test run.
@@ -157,7 +157,7 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
         };
 
         test("labels a request with the pattern of its route, not with its URL", async () => {
-            // Any route with a path parameter serves here. Point this at one of your own once the example is gone.
+            // Any route with a path parameter works. Use one of your own once the example is gone.
             await server().inject({ method: "GET", url: "/example/123" });
 
             const { body } = await scrape();
@@ -179,16 +179,23 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
     });
     ```
 
-    Also cover a scrape with the token (200, `text/plain; version=0.0.4; charset=utf-8`), a request without a token and one with a wrong token (401), a request that matches no route (`route="unmatched"`), that a scrape leaves no `route="/metrics"` series behind, and that a second `buildServer()` in the same process starts without the counts of the first. Add `["METRICS_TOKEN", "too-short"]` to the refused values in `test/env.test.ts`.
+    Also cover:
 
-6. **Verify** with `bun run check`. The Docker image needs no change, because everything new lives in `src/`. To read the metrics by hand, start the server with a token and send it:
+    - Scrape with the token: 200, `text/plain; version=0.0.4; charset=utf-8`.
+    - No token, wrong token: 401.
+    - Unmatched route: `route="unmatched"`.
+    - No `route="/metrics"` series after a scrape.
+    - A second `buildServer()` in the same process does not start with the first one's counts.
+    - Add `["METRICS_TOKEN", "too-short"]` to the refused values in `test/env.test.ts`.
+
+6. **Verify** with `bun run check`. The Docker image needs no change (all new code is in `src/`). To scrape by hand:
 
     ```bash
     METRICS_TOKEN=local-metrics-token-0123456789abcdef bun run dev
     curl -H 'authorization: Bearer local-metrics-token-0123456789abcdef' http://127.0.0.1:3000/metrics
     ```
 
-7. **Hand over the scrape configuration.** Whoever runs Prometheus adds a job like this one and puts the token in the file it names. The token is all that protects the endpoint and every scrape sends it, so scrape over HTTPS or a private network.
+7. **Hand over the scrape configuration.** The Prometheus operator adds a job like this, with the token in `credentials_file`. The token is the only protection and every scrape sends it: use HTTPS or a private network.
 
     ```yaml
     scrape_configs:
@@ -203,7 +210,7 @@ The endpoint is closed until it is configured: it exists only while `METRICS_TOK
 
 ## Adding a metric of your own
 
-Import the metric class from `@prometheus-io/client` and create the metric where its route plugin starts, in the registry of the server. Then update it in a handler, here with `entriesCreated.inc()` once the entry is stored:
+Create the metric at the top of its route plugin, then update it in a handler (here `entriesCreated.inc()` after storing the entry). Import the class from `@prometheus-io/client`.
 
 ```ts
 const route: FastifyPluginAsyncZod = async (fastify) => {
@@ -214,34 +221,36 @@ const route: FastifyPluginAsyncZod = async (fastify) => {
     });
 ```
 
-- Pass `registers: [fastify.metrics]` every time. Without it the metric lands in the library's global registry: it is missing from `/metrics`, and the second server of a test run fails to start.
-- Create a metric once, while the plugin is registered. Creating it in a handler throws on the second request. `fastify.metrics` also exists while `METRICS_TOKEN` is unset, so this code needs no check.
-- Name a metric in snake_case with its unit, and end a counter in `_total`. Declare its labels in `labelNames`. Only use a label with a small, fixed set of values, never an id, a key or anything else a client sends: every new value is a new series.
-- For a value that is read instead of counted, such as the number of rows in a table, create a `Gauge` with a `collect()` function that calls `this.set(...)`. The library runs it on every scrape.
-- To test it, call `server().metrics.resetMetrics()`, send the requests, and read the metric with `await server().metrics.getSingleMetricAsString("kv_entries_created_total")`. The result ends with the line `kv_entries_created_total 1`.
+- **Always pass `registers: [fastify.metrics]`.** Otherwise the metric goes to the global registry: it is missing from `/metrics`, and the second server of a test run fails to start.
+- **Create it once**, when the plugin registers. Creating it in a handler throws on the second request.
+- **No token check needed.** `fastify.metrics` exists even without `METRICS_TOKEN`.
+- **Names:** snake_case with the unit. Counters end in `_total`.
+- **Labels:** declare them in `labelNames`. Use only small, fixed sets of values. Never an id, a key or other client input: each new value is a new series.
+- **Read values**, such as a table's row count: use a `Gauge` with a `collect()` function that calls `this.set(...)`. It runs on every scrape.
+- **Test:** call `server().metrics.resetMetrics()`, send requests, then read `await server().metrics.getSingleMetricAsString("kv_entries_created_total")`. It ends with the line `kv_entries_created_total 1`.
 
 ## Under Bun
 
-`collectDefaultMetrics` runs without an error under Bun 1.4, but some default metrics read Node.js APIs that Bun only stubs. The plugin removes those, because a constant zero looks like a healthy value on a dashboard.
+Some default metrics read Node.js APIs that Bun 1.4 only stubs, with no error. The plugin removes them: a constant zero looks healthy on a dashboard.
 
 | Metric | Under Bun 1.4 |
 | --- | --- |
 | `nodejs_eventloop_utilization_*`, `nodejs_active_handles*`, `nodejs_active_requests*`, `nodejs_active_resources*` | Removed: always 0 or empty |
-| `nodejs_gc_duration_seconds` | Removed: never has a sample |
+| `nodejs_gc_duration_seconds` | Removed: no samples |
 | `nodejs_heap_space_size_*` | Removed: only `space="old"` has a value |
-| `nodejs_eventloop_lag_*` | Work. All but `nodejs_eventloop_lag_seconds` leave out the 10 ms sampling interval that Node.js includes, so a threshold taken from a Node.js dashboard is 10 ms too high |
-| `nodejs_heap_size_total_bytes` | Can be lower than `nodejs_heap_size_used_bytes`. Watch `process_resident_memory_bytes` instead |
-| `nodejs_version_info` | The Node.js version that Bun emulates, not the version of Bun |
+| `nodejs_eventloop_lag_*` | Work, but all except `nodejs_eventloop_lag_seconds` omit the 10 ms sampling interval that Node.js includes. Node.js dashboard thresholds are 10 ms too high |
+| `nodejs_heap_size_total_bytes` | Can be below `nodejs_heap_size_used_bytes`. Watch `process_resident_memory_bytes` instead |
+| `nodejs_version_info` | The emulated Node.js version, not Bun's |
 
-The `process_*` metrics work: CPU time, memory, open file descriptors and start time. The library reports the file descriptors, and all memory except `process_resident_memory_bytes`, on Linux only, so do not expect them in a test.
+`process_*` metrics work (CPU time, memory, open file descriptors, start time). File descriptors and all memory except `process_resident_memory_bytes` are Linux-only, so do not expect them in a test.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
-| `A metric with the name <name> has already been registered` in every test file after the first | A metric was created without `registers: [fastify.metrics]`, or two metrics share a name |
-| A metric of your own is missing from `/metrics` | It was created without `registers: [fastify.metrics]` |
-| `TypeError: undefined is not an object (evaluating 'register.registerMetric')` at startup | The plugin is registered after the routes, see step 4 |
-| `/metrics` answers 404 | `METRICS_TOKEN` is unset or empty. In a test, the line in `test/setup.ts` is missing, or the server was started with `useProcess()`, which only has the token when the test passes it |
-| `Added label "<name>" is not included in initial labelset` | The label is missing from the `labelNames` of the metric |
-| A count in a test is higher than expected | One server answers all tests of a `describe` block. Call `server().metrics.resetMetrics()` in `beforeEach` |
+| `A metric with the name <name> has already been registered` in every test file after the first | Missing `registers: [fastify.metrics]`, or two metrics share a name |
+| A custom metric is missing from `/metrics` | Missing `registers: [fastify.metrics]` |
+| `TypeError: undefined is not an object (evaluating 'register.registerMetric')` at startup | Plugin registered after the routes. See step 4 |
+| `/metrics` answers 404 | `METRICS_TOKEN` is unset or empty. In tests: the `test/setup.ts` line is missing, or `useProcess()` started the server without the token |
+| `Added label "<name>" is not included in initial labelset` | Label missing from the metric's `labelNames` |
+| A test count is too high | One server serves the whole `describe` block. Call `server().metrics.resetMetrics()` in `beforeEach` |
