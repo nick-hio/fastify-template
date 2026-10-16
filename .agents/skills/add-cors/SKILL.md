@@ -1,17 +1,20 @@
 ---
 name: add-cors
-description: Steps for letting web pages on other origins call this Fastify server with the @fastify/cors plugin, covering the origin allowlist, preflight requests, credentials and tests. Use this when a browser frontend on another domain or port must call the API, when a browser reports a CORS error, or when asked to add or change the allowed origins.
+description: Steps for letting web pages on other origins call this Fastify server with @fastify/cors, covering the origin allowlist, preflights, credentials and tests. Use this when a browser frontend on another domain or port must call the API, when a browser reports a CORS error, or when asked to add or change the allowed origins.
 ---
 
 # Add CORS
 
-A browser lets a page read a response from another origin only when the response names that origin. [@fastify/cors](https://github.com/fastify/fastify-cors) adds those headers and answers the preflight (`OPTIONS`) request a browser sends before a `PATCH`, a `DELETE` or a JSON body. The template does not ship with it, so no page on another origin can call the API.
+A browser lets a page read a cross-origin response only if the response names the page's origin. [@fastify/cors](https://github.com/fastify/fastify-cors) adds those headers. It also answers the preflight (`OPTIONS`) sent before a `PATCH`, a `DELETE` or a JSON body. The template does not include it, so pages on other origins cannot call the API.
 
-CORS is not authentication. Only browsers enforce it, and they only keep the response from the page: a request that needs no preflight, such as a `GET`, still runs when its origin is not allowed.
+**CORS is not authentication.** Only browsers enforce it, by hiding the response from the page. A request without a preflight, such as a `GET`, still runs from any origin.
 
 ## Steps
 
-1. **Ask which origins, and whether they send cookies.** An origin is a scheme, a host and a port, without a path: `https://app.example.com`, `http://localhost:5173`. `http://localhost:5173` and `http://127.0.0.1:5173` are two origins. Ask too whether the browser must send cookies with its requests. A token that the page puts in an `Authorization` header is not a cookie. If the task names no origin, leave the list empty and do not guess one.
+1. **Ask which origins, and whether they send cookies.**
+    - **An origin** is scheme, host and port, without a path: `https://app.example.com`. `http://localhost:5173` and `http://127.0.0.1:5173` are two origins.
+    - **Cookies** decide `credentials` in step 4. A token in an `Authorization` header is not a cookie.
+    - **No origin given?** Leave the list empty. Do not guess.
 
 2. **Install the plugin** with `bun add @fastify/cors`.
 
@@ -76,17 +79,19 @@ CORS is not authentication. Only browsers enforce it, and they only keep the res
     );
     ```
 
-    - Keep `origin` a function. Given the list itself, the plugin still answers the preflight of any other origin with 204 and the allowed methods, and with `credentials: true` it sends every origin `Access-Control-Allow-Credentials`. With the function, another origin gets no CORS header, only `Vary: Origin`, and its preflight is a 404.
-    - Never set `origin` to `true` or `"*"`. `true` repeats the origin of every request, so with `credentials: true` any site the user visits can call the API with the user's cookies and read the answers. Browsers refuse `"*"` together with credentials.
-    - Set `credentials: true` only if step 1 said the browser sends cookies. The page must then call `fetch` with `credentials: "include"`.
-    - `allowedHeaders` are the request headers a page may send. Add any other header the API reads, such as one that carries an API key.
-    - A page can read only a few response headers. To let it read another, such as `Retry-After`, list it in `exposedHeaders`.
+    - **Keep `origin` a function.** Given a plain list, the plugin answers every preflight with 204 and the allowed methods. With `credentials: true`, it also sends `Access-Control-Allow-Credentials` to every origin. With the function, other origins get only `Vary: Origin` and a 404 preflight.
+    - **Never set `origin` to `true` or `"*"`.** `true` echoes any origin, so with `credentials: true` any site the user visits can call the API with the user's cookies and read the answers. Browsers refuse `"*"` with credentials.
+    - **`credentials: true`** only if the browser sends cookies (step 1). The page then calls `fetch` with `credentials: "include"`.
+    - **`allowedHeaders`** are the request headers a page may send. Add any other header the API reads, such as an API key header.
+    - **`exposedHeaders`**: list the response headers a page must read beyond the few defaults, such as `Retry-After`.
 
 5. **Register it** in `src/server.ts` with `await fastify.register(cors);`, after `errorHandler` and before the routes.
 
-    Hooks run in registration order, and `sensible` and `errorHandler` add none. Register CORS before a plugin that can reject a request, such as authentication: a preflight carries no token and must be answered first, and a 401 from a hook that ran before CORS has no CORS headers, so the page cannot read it. Register it after a plugin whose headers belong on every response, such as security headers: CORS answers a preflight in its own hook, and hooks registered after it do not run for that request.
+    Hooks run in registration order. `sensible` and `errorHandler` add none.
+    - **Before plugins that reject requests**, such as authentication. A preflight has no token and must be answered first. A 401 from an earlier hook has no CORS headers, so the page cannot read it.
+    - **After plugins that add headers to every response**, such as security headers. CORS answers a preflight in its own hook, so later hooks do not run for it.
 
-6. **Test it.** `src/env.ts` is read once per test run, so set the list for the whole run in `test/setup.ts`, next to the other variables:
+6. **Test it.** `src/env.ts` is read once per test run, so set the list in `test/setup.ts`, next to the other variables:
 
     ```ts
     // the origins that `test/cors.test.ts` sends requests from
@@ -119,24 +124,36 @@ CORS is not authentication. Only browsers enforce it, and they only keep the res
     });
     ```
 
-    - Cover an allowed origin, an origin that is not on the list, and the preflight of both. The other origin must get no header that starts with `access-control-`, and its preflight a 404.
-    - Assert `access-control-allow-origin` on an error from an allowed origin too, such as a 404. Without it the page cannot read the error. `inject()` is not a browser: it blocks nothing, so every check is an assertion on headers.
-    - For the empty list, start a process with `useProcess()`. It runs with the defaults of `src/env.ts`, not with what `test/setup.ts` sets.
+    - **Cover** an allowed and an unlisted origin, with and without a preflight. The unlisted origin gets no header that starts with `access-control-`, and a 404 preflight.
+    - **Errors too.** Assert `access-control-allow-origin` on an error for an allowed origin, such as a 404. Without it, the page cannot read the error.
+    - **`inject()` blocks nothing.** It is not a browser, so every check is a header assertion.
+    - **Empty list:** use `useProcess()`. It runs with the defaults of `src/env.ts`, not `test/setup.ts`.
 
-7. **Update the documentation.** Add the variable to `.env.example`, to the table in `README.md` and to `compose.yml` as `CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}`. In `AGENTS.md`, add to the Routes conventions that a request header a page sends, or a new method, must be added to `allowedHeaders` or `methods` in `src/plugins/cors.ts`.
+7. **Update the documentation.**
+    - Add the variable to `.env.example`, the `README.md` table and `compose.yml` as `CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}`.
+    - In `AGENTS.md`, add under Routes: a new request header a page sends, or a new method, goes into `allowedHeaders` or `methods` in `src/plugins/cors.ts`.
 
-8. **Verify** with `bun run check`. To see a preflight by hand, run `bun run dev` with the origin in `CORS_ALLOWED_ORIGINS` and send `curl -i -X OPTIONS http://127.0.0.1:3000/example/1 -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: PATCH'`.
+8. **Verify** with `bun run check`. To check a preflight by hand, run `bun run dev` with the origin in `CORS_ALLOWED_ORIGINS`, then:
+
+    ```bash
+    curl -i -X OPTIONS http://127.0.0.1:3000/example/1 -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: PATCH'
+    ```
 
 ## One route
 
-A route overrides the plugin options in its `config`: `config: { cors: { origin: "*" } }` lets every origin read the route, and `config: { cors: false }` lets none. The preflight is not answered by the route, so it still follows the list. An origin that is not on it can therefore only send requests that need no preflight, such as a `GET` without custom headers.
+A route's `config` overrides the plugin options:
+
+- `config: { cors: { origin: "*" } }` lets every origin read the route.
+- `config: { cors: false }` lets none.
+
+**The preflight still follows the list**, because the route does not answer it. Unlisted origins can only send requests without a preflight, such as a `GET` without custom headers.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
-| The server exits with `CORS_ALLOWED_ORIGINS.0 -> Must be an origin ...` | The entry at that position has a path, a trailing slash, a wildcard, an upper-case letter or a default port such as `:443` |
-| The server exits with `TypeError: Invalid URL` | `abort: true` is missing from `z.url()`, so `.refine` ran on a value that is not a URL |
-| The preflight is a 404 `Route OPTIONS:/... not found` | The `Origin` of the request is not on the list. Compare it character by character, and check that `compose.yml` passes the variable |
-| The preflight is a 204 but the browser blocks the request | The method is missing from `methods`, or a request header is missing from `allowedHeaders` |
-| A 401 or another early error has no CORS headers | The plugin that answered is registered before CORS, see step 5 |
+| Server exits with `CORS_ALLOWED_ORIGINS.0 -> Must be an origin ...` | The entry at that index has a path, a trailing slash, a wildcard, an upper-case letter or a default port such as `:443` |
+| Server exits with `TypeError: Invalid URL` | `z.url()` lacks `abort: true`, so `.refine` ran on a non-URL |
+| Preflight is a 404 `Route OPTIONS:/... not found` | The request `Origin` is not on the list. Compare it character by character, and check that `compose.yml` passes the variable |
+| Preflight is a 204, but the browser blocks the request | A method is missing from `methods`, or a request header from `allowedHeaders` |
+| A 401 or other early error has no CORS headers | The plugin that answered is registered before CORS, see step 5 |

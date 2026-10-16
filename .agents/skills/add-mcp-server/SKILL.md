@@ -1,13 +1,14 @@
 ---
 name: add-mcp-server
-description: Steps for adding an MCP (Model Context Protocol) server to this Fastify server with the fastify-mcp-server plugin, covering installation, tools, the host allowlist, authentication and tests. Use this when asked to expose the API to AI clients over MCP, to add an `/mcp` endpoint, or to add or change an MCP tool.
+description: Steps for adding an MCP (Model Context Protocol) server with fastify-mcp-server, covering installation, tools, the host allowlist, authentication and tests. Use this when asked to expose the API to AI clients over MCP, to add an `/mcp` endpoint, or to add or change an MCP tool.
 ---
 
 # Add an MCP server
 
-[fastify-mcp-server](https://github.com/flaviodelgrosso/fastify-mcp-server) mounts an MCP endpoint, `POST /mcp`, on the existing server. AI clients call the tools registered there. The template does not ship with it.
+[fastify-mcp-server](https://github.com/flaviodelgrosso/fastify-mcp-server) adds `POST /mcp`, where AI clients call your tools. The template does not ship with it.
 
-The plugin speaks MCP revision `2026-07-28` only. That revision has no session and no `initialize` handshake: every request stands alone. A client that only speaks an older revision is answered with a 400.
+- **MCP revision `2026-07-28` only.** Clients on an older revision get a 400.
+- **No session** and no `initialize` handshake. Every request stands alone.
 
 ## Steps
 
@@ -17,7 +18,7 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     bun add fastify-mcp-server @modelcontextprotocol/server
     ```
 
-    `bunfig.toml` holds back releases younger than 3 days, so the installed version can be older than the README on GitHub. Read the options of the version you got in `node_modules/fastify-mcp-server/README.md` and `node_modules/fastify-mcp-server/dist/types.d.ts`.
+    `bunfig.toml` holds back releases younger than 3 days. Read the installed version's options in `node_modules/fastify-mcp-server/README.md` and `node_modules/fastify-mcp-server/dist/types.d.ts`, not on GitHub.
 
 2. **Add the tool helpers** in `src/mcp/utils.ts`:
 
@@ -33,8 +34,8 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     });
 
     /**
-     * Runs the body of a tool handler. An unexpected error is logged and answered with a generic
-     * message, because the SDK would otherwise send the error's own message to the client.
+     * Runs the body of a tool handler. Logs an unexpected error and returns a generic message,
+     * because the SDK would otherwise send the error's own message to the client.
      */
     export const runTool = async (log: FastifyBaseLogger, run: () => Promise<CallToolResult>): Promise<CallToolResult> => {
         const [error, result] = await safeAwait(run());
@@ -48,9 +49,9 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     };
     ```
 
-    The error handler in `src/plugins/error-handler.ts` does not cover tools. `runTool` is what keeps internal details, such as a database error, away from the client.
+    `src/plugins/error-handler.ts` does not cover tools. Only `runTool` hides internal details, such as database errors, from the client.
 
-3. **Write the tools.** One file per resource in `src/mcp/tools/`, named after the resource, like the files in `src/routes/`. This one is `src/mcp/tools/example.ts`:
+3. **Write the tools.** Use one file per resource in `src/mcp/tools/`, named like the files in `src/routes/`. Example `src/mcp/tools/example.ts`:
 
     ```ts
     import type { McpServer } from "@modelcontextprotocol/server";
@@ -82,12 +83,12 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     };
     ```
 
-    - Reuse the Zod schemas from `src/db/schema/`. The SDK validates the arguments against `inputSchema` before the handler runs, so `key` is a validated string here.
-    - Wrap the body of every handler in `runTool`, and return `toolError("...")` for a failure the client can act on.
-    - A tool with an `outputSchema` must return a matching `structuredContent`. Also put the same data in `content` as text, for clients that only read that.
-    - The model on the other end chooses a tool by its `description`. Say what the tool does and what it returns.
+    - **Reuse the Zod schemas** from `src/db/schema/`. The SDK validates arguments against `inputSchema` before the handler runs.
+    - **Wrap every handler** in `runTool`. Return `toolError("...")` for a failure the client can act on.
+    - **With `outputSchema`**, return a matching `structuredContent`. Repeat it as text in `content` for clients that read only that.
+    - **Describe the tool.** The model picks tools by `description`. Say what the tool does and returns.
 
-4. **Create the server factory** in `src/mcp/index.ts` and register each tool file there:
+4. **Create the server factory** in `src/mcp/index.ts`. Register each tool file there:
 
     ```ts
     import { McpServer } from "@modelcontextprotocol/server";
@@ -95,8 +96,8 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     import { registerExampleTools } from "@/mcp/tools/example";
 
     /**
-     * Builds the MCP server. The plugin calls this once per request and keeps nothing
-     * between requests, so only register tools here and leave the work to their handlers.
+     * Builds the MCP server. The plugin calls this once per request and keeps nothing between
+     * requests, so only register tools here and leave the work to their handlers.
      */
     export const createMcpServer = (log: FastifyBaseLogger) => {
         const mcp = new McpServer({ name: "my-api", version: "1.0.0" });
@@ -117,9 +118,10 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
         .optional(),
     ```
 
-    The endpoint answers 403 unless the `Host` header of the request is on this list, and the default list is `localhost`, `127.0.0.1` and `[::1]`. A deployed server therefore needs its public hostname here, for example `MCP_ALLOWED_HOSTS="api.example.com"`. Setting the variable replaces the default list.
-
-    Add the variable to `.env.example` as `MCP_ALLOWED_HOSTS="localhost,127.0.0.1,[::1]"`, to the table in `README.md` and to `compose.yml` as `MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}`.
+    - **403** unless the `Host` header is on the list.
+    - **Default list:** `localhost`, `127.0.0.1` and `[::1]`. Setting the variable replaces it.
+    - **Deployed server:** add its public hostname, for example `MCP_ALLOWED_HOSTS="api.example.com"`.
+    - **Config files:** add it to `.env.example` as `MCP_ALLOWED_HOSTS="localhost,127.0.0.1,[::1]"`, to the `README.md` table, and to `compose.yml` as `MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}`.
 
 6. **Register the plugin** in `src/server.ts`, with the other plugins and before the routes:
 
@@ -134,9 +136,9 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     });
     ```
 
-    `transport` is required from version 1.1.0. Version 1.0.x does not know the option and fails the typecheck with `'transport' does not exist`, so leave the line out there.
+    `transport` is required from 1.1.0. On 1.0.x, leave it out, or the typecheck fails with `'transport' does not exist`.
 
-7. **Decide who may call the endpoint.** Without `authorization`, anyone who can reach the server can call every tool. If the task does not say who the clients are, ask before you expose a tool that changes data. See [Authentication](#authentication).
+7. **Decide who may call the endpoint.** Without `authorization`, anyone who reaches the server can call every tool. If the task does not name the clients, ask before exposing a tool that changes data. See [Authentication](#authentication).
 
 8. **Test it.** Add this helper to `test/helpers.ts`:
 
@@ -150,8 +152,8 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     const MCP_PROTOCOL_VERSION = "2026-07-28";
 
     /**
-     * Sends one MCP request to `/mcp` and returns the `result` of the JSON-RPC response.
-     * The protocol keeps no session, so every request names its protocol version and client itself.
+     * Sends one MCP request to `/mcp` and returns the JSON-RPC `result`.
+     * There is no session, so every request names its protocol version and client.
      */
     export const mcpRequest = async <T>(server: Server, method: string, params: Record<string, unknown> = {}) => {
         const response = await server.inject({
@@ -182,7 +184,11 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     };
     ```
 
-    Then cover each tool in `test/mcp.test.ts`, in a `describe` block set up like the one in `test/example.test.ts`: the success case, each `toolError` and one call with invalid arguments. The SDK answers invalid arguments itself, with `isError: true` and a text that starts with `Input validation error`.
+    Cover each tool in `test/mcp.test.ts`, with a `describe` block set up like `test/example.test.ts`:
+
+    - the success case
+    - each `toolError`
+    - one call with invalid arguments. The SDK returns `isError: true` with a text that starts `Input validation error`.
 
     ```ts
     import type { CallToolResult, ListToolsResult } from "@modelcontextprotocol/server";
@@ -202,9 +208,11 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
     });
     ```
 
-9. **Update the documentation.** Add `POST /mcp` to the API table in `README.md`. In the layout in `AGENTS.md`, add `mcp/` and name `mcpRequest()` on the line of `test/helpers.ts`.
+9. **Update the documentation.**
+    - `README.md`: add `POST /mcp` to the API table.
+    - `AGENTS.md` layout: add `mcp/`. Name `mcpRequest()` on the `test/helpers.ts` line.
 
-10. **Verify** with `bun run check`. To call the endpoint by hand, run `bun run dev` and send:
+10. **Verify** with `bun run check`. To test by hand, run `bun run dev` and send:
 
     ```bash
     curl http://127.0.0.1:3000/mcp \
@@ -214,13 +222,13 @@ The plugin speaks MCP revision `2026-07-28` only. That revision has no session a
         -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
     ```
 
-    The Docker image needs no change, because everything new lives in `src/`.
+    The Docker image needs no change, because all new code is in `src/`.
 
 ## Authentication
 
-Pass a verifier as `authorization: { bearer: { verifier } }` when you register the plugin. The plugin then answers 401 unless the request carries `Authorization: Bearer <token>` and the verifier accepts the token.
+Pass `authorization: { bearer: { verifier } }` to the plugin. A request then needs `Authorization: Bearer <token>` with a token the verifier accepts, or it gets a 401.
 
-For one shared secret, add `MCP_TOKEN: z.string().min(32)` to `src/env.ts` and write the verifier in `src/mcp/auth.ts`:
+For one shared secret, add `MCP_TOKEN: z.string().min(32)` to `src/env.ts`. Write the verifier in `src/mcp/auth.ts`:
 
 ```ts
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -232,7 +240,7 @@ const digest = (value: string) => createHash("sha256").update(value).digest();
 /** Accepts the one shared token from `MCP_TOKEN`. */
 export const verifier: OAuthTokenVerifier = {
     verifyAccessToken: async (token) => {
-        // compare digests in constant time, so the response time does not reveal how much of the token matched
+        // constant-time digest compare, so response time does not reveal how much of the token matched
         if (!timingSafeEqual(digest(token), digest(env.MCP_TOKEN))) {
             throw new OAuthError(OAuthErrorCode.InvalidToken, "Invalid token");
         }
@@ -243,33 +251,36 @@ export const verifier: OAuthTokenVerifier = {
 };
 ```
 
-- `MCP_TOKEN` has no default, so nothing that reads the environment starts without it: the server, `bun run db:generate`, `bun run db:studio` and `bun run db:backup`.
-- Give it a value in `.env.example` and add a row for it to the table in `README.md`. Pass it through `compose.yml` as `MCP_TOKEN: ${MCP_TOKEN:-}`, and set a value for the `docker` job of `.github/workflows/ci.yml` under `env`. Correct the sentence that says every variable is optional, in `README.md` and at the top of `.env.example`.
-- For the tests, set `process.env.MCP_TOKEN` in `test/setup.ts`. A process that a test starts does not get what that file sets, so also add `MCP_TOKEN: env.MCP_TOKEN` next to `NODE_ENV` in `childEnv` of `test/helpers.ts`. Without it, every test that starts a process fails. Send the token from `mcpRequest` as the header ``authorization: `Bearer ${env.MCP_TOKEN}` ``. Add a test for a request without a token and one for a wrong token. Both get a 401.
-- The `curl` from step 10 now needs `-H "authorization: Bearer $MCP_TOKEN"`.
-- To accept tokens from an OAuth provider instead, verify the token in `verifyAccessToken` and return its real client, scopes and expiry.
-- A handler reads the caller from its last argument: `(args, ctx) => ...`, or `(ctx) => ...` for a tool without `inputSchema`, then `ctx.http?.authInfo`.
+- **No default.** Without `MCP_TOKEN`, nothing that reads the environment starts: the server, `bun run db:generate`, `bun run db:studio` and `bun run db:backup`.
+- **Config files:** set a value in `.env.example` and under `env` of the `docker` job in `.github/workflows/ci.yml`. Add a `README.md` table row. Add `MCP_TOKEN: ${MCP_TOKEN:-}` to `compose.yml`.
+- **"Every variable is optional"** is now false. Fix that sentence in `README.md` and at the top of `.env.example`.
+- **Test setup:** set `process.env.MCP_TOKEN` in `test/setup.ts`. Child processes do not get it: also add `MCP_TOKEN: env.MCP_TOKEN` next to `NODE_ENV` in `childEnv` of `test/helpers.ts`, or every test that starts a process fails.
+- **`mcpRequest`** must send the header ``authorization: `Bearer ${env.MCP_TOKEN}` ``.
+- **Test** a request with no token and one with a wrong token. Both get a 401.
+- **`curl`** from step 10 needs `-H "authorization: Bearer $MCP_TOKEN"`.
+- **OAuth provider:** verify its token in `verifyAccessToken`. Return the real client, scopes and expiry.
+- **Caller identity:** read `ctx.http?.authInfo`. `ctx` is the handler's last argument: `(args, ctx) => ...`, or `(ctx) => ...` without `inputSchema`.
 
 ## Adding a tool later
 
-Add it to the matching file in `src/mcp/tools/`, or to a new file that you register in `src/mcp/index.ts`. Add its tests and run `bun run check`. Resources and prompts are registered in the same place, with `mcp.registerResource` and `mcp.registerPrompt`.
+Add it to the matching file in `src/mcp/tools/`. Register any new file in `src/mcp/index.ts`. Add tests and run `bun run check`. Resources and prompts go in the same place, with `mcp.registerResource` and `mcp.registerPrompt`.
 
 ## How the endpoint differs from a route
 
-- Its responses are JSON-RPC, not the `{ statusCode, error, message }` body of the other routes. Rejected tokens get an OAuth body, `{ error, error_description }`. Only a request that fails before it reaches the plugin, such as a body that is not JSON or is too large, gets the body of the other routes.
-- A failed tool call is still HTTP 200. The failure is in the result, as `isError: true`. A call to a tool that does not exist is also HTTP 200, with a JSON-RPC `error` and no `result`.
-- `REQUEST_TIMEOUT_MS` does not apply. A tool call that takes longer is not answered with 503, so give slow work in a tool a time limit of its own.
-- The plugin answers every method on `/mcp`. Anything but `POST` gets a 405.
-- The request log shows every call as `POST /mcp`. To log the method and tool name, pass `onRequestComplete: (event) => fastify.log.info(event, "MCP request completed")` to the plugin.
+- **JSON-RPC bodies**, not `{ statusCode, error, message }`. Rejected tokens get the OAuth body `{ error, error_description }`. Only requests that fail before the plugin (invalid JSON, body too large) get the usual error body.
+- **Failed tool calls are HTTP 200**, with `isError: true`. Unknown tools are also 200, with a JSON-RPC `error` and no `result`.
+- **No `REQUEST_TIMEOUT_MS`.** Slow tool calls never get a 503. Give slow work its own time limit.
+- **Only `POST`.** Other methods on `/mcp` get a 405.
+- **The request log** shows every call as `POST /mcp`. For method and tool name, pass `onRequestComplete: (event) => fastify.log.info(event, "MCP request completed")` to the plugin.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
-| 403 `Invalid Host: <name>` | The hostname is not in `MCP_ALLOWED_HOSTS`. Behind a reverse proxy, allow the `Host` value the proxy forwards |
-| 403 `Invalid Origin: <name>` | A browser-based client on another site. Pass its hostname in the plugin option `allowedOrigins` |
-| 400 `Unsupported protocol version` | The client speaks an older MCP revision |
-| 400 `the request headers and body disagree` | The `MCP-Protocol-Version` or `Mcp-Method` header, or `Mcp-Name` on a tool call, is missing or differs from the body |
-| 401 `Token has no expiration time` | The verifier returned no `expiresAt` |
-| `Output validation error` in a tool result | `structuredContent` is missing or does not match `outputSchema` |
-| Typecheck fails on `transport` | The option does not match the installed version, see step 6 |
+| 403 `Invalid Host: <name>` | Hostname not in `MCP_ALLOWED_HOSTS`. Behind a proxy, allow the `Host` value it forwards |
+| 403 `Invalid Origin: <name>` | Browser client on another site. Add its hostname to plugin option `allowedOrigins` |
+| 400 `Unsupported protocol version` | Client speaks an older MCP revision |
+| 400 `the request headers and body disagree` | `MCP-Protocol-Version`, `Mcp-Method` or (tool calls) `Mcp-Name` header missing or not matching the body |
+| 401 `Token has no expiration time` | Verifier returned no `expiresAt` |
+| `Output validation error` in a tool result | `structuredContent` missing or not matching `outputSchema` |
+| Typecheck fails on `transport` | Option does not match the installed version, see step 6 |
