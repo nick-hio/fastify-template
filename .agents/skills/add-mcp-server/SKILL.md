@@ -1,24 +1,41 @@
 ---
 name: add-mcp-server
-description: Steps for adding an MCP (Model Context Protocol) server with fastify-mcp-server, covering installation, tools, the host allowlist, authentication and tests. Use this when asked to expose the API to AI clients over MCP, to add an `/mcp` endpoint, or to add or change an MCP tool.
+description: Steps for adding an MCP (Model Context Protocol) server with the MCP TypeScript SDK, covering the protocol versions, installation, tools, the host allowlist, authentication and tests. Use this when asked to expose the API to AI clients over MCP, to add an `/mcp` endpoint, to add or change an MCP tool, or when an MCP client fails with `Unsupported protocol version`.
 ---
 
 # Add an MCP server
 
-[fastify-mcp-server](https://github.com/flaviodelgrosso/fastify-mcp-server) adds `POST /mcp`, where AI clients call your tools. The template does not ship with it.
+Add `POST /mcp`, where AI clients call your tools. The template does not ship with it.
 
-- **MCP revision `2026-07-28` only.** Clients on an older revision get a 400.
-- **No session** and no `initialize` handshake. Every request stands alone.
+## Protocol versions
+
+MCP has two kinds of revision. Many clients still speak only the older kind.
+
+| Revision | How a client talks to it | Example client (November 2026) |
+| --- | --- | --- |
+| `2026-07-28` | No handshake. Every request names its version and client in `params._meta` and in headers | Claude Code |
+| `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05` | `initialize` first, then `notifications/initialized`, then the calls | Codex (`2025-06-18`) |
+
+There are two ways to mount the endpoint:
+
+- **Both kinds (default).** Your own plugin around the SDK's `createMcpHandler`, with `legacy: "stateless"`. See [Serve both kinds of revision](#serve-both-kinds-of-revision).
+- **`2026-07-28` only.** The [fastify-mcp-server](https://github.com/flaviodelgrosso/fastify-mcp-server) plugin. Version 1.x hard-codes `legacy: "reject"` and has no option to change it. A 2025 client then fails to start with `-32022: Unsupported protocol version: 2025-06-18`.
+
+Serve both unless the task says that every client speaks `2026-07-28`. Neither way keeps a session: every request gets a fresh server from `createMcpServer()`.
 
 ## Steps
 
-1. **Install the plugin and the MCP SDK.**
+1. **Install the MCP SDK.**
 
     ```bash
+    # both kinds of revision
+    bun add @modelcontextprotocol/server @modelcontextprotocol/node
+
+    # 2026-07-28 only
     bun add fastify-mcp-server @modelcontextprotocol/server
     ```
 
-    `bunfig.toml` holds back releases younger than 3 days. Read the installed version's options in `node_modules/fastify-mcp-server/README.md` and `node_modules/fastify-mcp-server/dist/types.d.ts`, not on GitHub.
+    `bunfig.toml` holds back releases younger than 3 days. Read the installed version's options in `node_modules/@modelcontextprotocol/server/dist/*.d.mts` (and `node_modules/fastify-mcp-server/dist/types.d.ts`), not on GitHub.
 
 2. **Add the tool helpers** in `src/mcp/utils.ts`:
 
@@ -123,7 +140,21 @@ description: Steps for adding an MCP (Model Context Protocol) server with fastif
     - **Deployed server:** add its public hostname, for example `MCP_ALLOWED_HOSTS="api.example.com"`.
     - **Config files:** add it to `.env.example` as `MCP_ALLOWED_HOSTS="localhost,127.0.0.1,[::1]"`, to the `README.md` table, and to `compose.yml` as `MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}`.
 
-6. **Register the plugin** in `src/server.ts`, with the other plugins and before the routes:
+6. **Register the endpoint** in `src/server.ts`, with the other plugins and before the routes.
+
+    Both kinds of revision: write `src/plugins/mcp.ts` from [Serve both kinds of revision](#serve-both-kinds-of-revision), then:
+
+    ```ts
+    import { createMcpServer } from "@/mcp";
+    import mcp from "@/plugins/mcp";
+
+    await fastify.register(mcp, {
+        createMcpServer: () => createMcpServer(fastify.log),
+        allowedHosts: env.MCP_ALLOWED_HOSTS,
+    });
+    ```
+
+    `2026-07-28` only:
 
     ```ts
     import mcp from "fastify-mcp-server";
@@ -133,12 +164,14 @@ description: Steps for adding an MCP (Model Context Protocol) server with fastif
         transport: "http",
         createMcpServer: () => createMcpServer(fastify.log),
         allowedHosts: env.MCP_ALLOWED_HOSTS,
+        // the request log shows every call as `POST /mcp`, this adds the method and the tool name
+        onRequestComplete: (event) => fastify.log.info(event, "MCP request completed"),
     });
     ```
 
     `transport` is required from 1.1.0. On 1.0.x, leave it out, or the typecheck fails with `'transport' does not exist`.
 
-7. **Decide who may call the endpoint.** Without `authorization`, anyone who reaches the server can call every tool. If the task does not name the clients, ask before exposing a tool that changes data. See [Authentication](#authentication).
+7. **Decide who may call the endpoint.** Without a verifier, anyone who reaches the server can call every tool. If the task does not name the clients, ask before exposing a tool that changes data. See [Authentication](#authentication).
 
 8. **Test it.** Add this helper to `test/helpers.ts`:
 
@@ -208,11 +241,55 @@ description: Steps for adding an MCP (Model Context Protocol) server with fastif
     });
     ```
 
-9. **Update the documentation.**
-    - `README.md`: add `POST /mcp` to the API table.
-    - `AGENTS.md` layout: add `mcp/`. Name `mcpRequest()` on the `test/helpers.ts` line.
+    When you serve both kinds of revision, also test a 2025 client. Add this helper to `test/helpers.ts`:
 
-10. **Verify** with `bun run check`. To test by hand, run `bun run dev` and send:
+    ```ts
+    /**
+     * Sends one MCP request the way a 2025 client does: no `_meta`, and `initialize` before the calls.
+     * Returns the HTTP status and the JSON-RPC message, which the SDK can send as one SSE event.
+     */
+    export const legacyMcpRequest = async (server: Server, body: Record<string, unknown>) => {
+        const response = await server.inject({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+                // a 2025 client must accept both, or it gets a 406
+                accept: "application/json, text/event-stream",
+                // after `initialize`, the client sends the version that the server agreed to
+                ...(body.method !== "initialize" && { "mcp-protocol-version": "2025-06-18" }),
+            },
+            payload: { jsonrpc: "2.0", ...body },
+        });
+        const data = response.body.match(/^data: (.*)$/m)?.[1] ?? response.body;
+
+        return { statusCode: response.statusCode, message: data ? JSON.parse(data) : undefined };
+    };
+    ```
+
+    ```ts
+    test("a 2025 client can initialize, then list the tools", async () => {
+        const init = await legacyMcpRequest(server(), {
+            id: 1,
+            method: "initialize",
+            params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0.0.0" } },
+        });
+        expect(init.statusCode).toBe(200);
+        expect(init.message.result.protocolVersion).toBe("2025-06-18");
+
+        const initialized = await legacyMcpRequest(server(), { method: "notifications/initialized" });
+        expect(initialized.statusCode).toBe(202);
+
+        const list = await legacyMcpRequest(server(), { id: 2, method: "tools/list" });
+        expect(list.statusCode).toBe(200);
+        expect(list.message.result.tools.map((tool: { name: string }) => tool.name)).toEqual(["get-entry"]);
+    });
+    ```
+
+9. **Update the documentation.**
+    - `README.md`: add `POST /mcp` to the API table. Name the MCP revisions it serves.
+    - `AGENTS.md` layout: add `mcp/`. Name `mcpRequest()` (and `legacyMcpRequest()`) on the `test/helpers.ts` line.
+
+10. **Verify** with `bun run check`. To test by hand, run `bun run dev` and send a `2026-07-28` request:
 
     ```bash
     curl http://127.0.0.1:3000/mcp \
@@ -222,11 +299,144 @@ description: Steps for adding an MCP (Model Context Protocol) server with fastif
         -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
     ```
 
+    When you serve both kinds, also send a 2025 `initialize`. The answer is one SSE event with `"protocolVersion":"2025-06-18"`:
+
+    ```bash
+    curl http://127.0.0.1:3000/mcp \
+        -H 'content-type: application/json' \
+        -H 'accept: application/json, text/event-stream' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+    ```
+
     The Docker image needs no change, because all new code is in `src/`.
+
+## Serve both kinds of revision
+
+`src/plugins/mcp.ts` mounts the SDK handler on a Fastify route. It does the checks that `fastify-mcp-server` would do: `Host`, `Origin` and the bearer token.
+
+```ts
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import {
+    bearerAuthChallengeResponse,
+    createMcpHandler,
+    localhostAllowedHostnames,
+    localhostAllowedOrigins,
+    type McpServerFactory,
+    type OAuthTokenVerifier,
+    validateHostHeader,
+    validateOriginHeader,
+    verifyBearerToken,
+} from "@modelcontextprotocol/server";
+import type { FastifyPluginAsync } from "fastify";
+import fp from "fastify-plugin";
+import { safeAwait } from "@/utils";
+
+export interface McpOptions {
+    /** Builds the MCP server. Called once per request. */
+    createMcpServer: McpServerFactory;
+    /** Hostnames allowed in the `Host` header. Defaults to localhost. */
+    allowedHosts?: string[];
+    /** Hostnames of the browser origins allowed in the `Origin` header. Defaults to localhost. */
+    allowedOrigins?: string[];
+    /** Checks the bearer token. Without it, every request is accepted. */
+    verifier?: OAuthTokenVerifier;
+}
+
+/** The JSON-RPC method of a request body. 2025 clients do not send the `Mcp-Method` header. */
+const bodyMethod = (body: unknown) => {
+    return body && typeof body === "object" && "method" in body && typeof body.method === "string"
+        ? body.method
+        : undefined;
+};
+
+/**
+ * `POST /mcp` for MCP `2026-07-28` and the 2025 revisions.
+ * A 2025 request gets a fresh server and no session, like a `2026-07-28` request.
+ */
+const mcp: FastifyPluginAsync<McpOptions> = async (fastify, options) => {
+    const handler = createMcpHandler(options.createMcpServer, { legacy: "stateless" });
+    const nodeHandler = toNodeHandler(handler);
+
+    fastify.addHook("onClose", async () => {
+        await handler.close();
+    });
+
+    fastify.all("/mcp", {
+        onRequest: async (req, reply) => {
+            const checks = [
+                validateHostHeader(req.headers.host, options.allowedHosts ?? localhostAllowedHostnames()),
+                validateOriginHeader(req.headers.origin, options.allowedOrigins ?? localhostAllowedOrigins()),
+            ];
+
+            for (const check of checks) {
+                if (!check.ok) {
+                    return reply
+                        .status(403)
+                        .send({ jsonrpc: "2.0", error: { code: -32600, message: check.message }, id: null });
+                }
+            }
+        },
+        preHandler: async (req, reply) => {
+            if (!options.verifier) {
+                return;
+            }
+
+            const [error, auth] = await safeAwait(
+                verifyBearerToken(req.headers.authorization, { verifier: options.verifier }),
+            );
+
+            if (error) {
+                const response = bearerAuthChallengeResponse(error, {});
+                return reply
+                    .status(response.status)
+                    .headers(Object.fromEntries(response.headers))
+                    .send(await response.json());
+            }
+
+            // the SDK reads the token from `req.raw.auth` and passes it to tool handlers as `ctx.http.authInfo`
+            Object.assign(req.raw, { auth });
+        },
+        handler: async (req, reply) => {
+            const startedAt = performance.now();
+
+            // the SDK writes the response, Fastify must not
+            reply.hijack();
+
+            try {
+                await nodeHandler(req.raw, reply.raw, req.body);
+            } finally {
+                // the request log shows every call as `POST /mcp`, this adds the method and the tool name
+                req.log.info(
+                    {
+                        method: req.headers["mcp-method"]?.toString() ?? bodyMethod(req.body),
+                        name: req.headers["mcp-name"]?.toString(),
+                        protocolVersion: req.headers["mcp-protocol-version"]?.toString(),
+                        durationMs: performance.now() - startedAt,
+                        statusCode: reply.raw.statusCode,
+                    },
+                    "MCP request completed",
+                );
+            }
+        },
+    });
+};
+
+export default fp(mcp, { name: "mcp" });
+```
+
+- **No session for 2025 clients.** Each request, `initialize` too, gets a fresh server. `GET` and `DELETE` (the 2025 session operations) get 405. Keep tools free of state between calls.
+- **Tool code is the same** for both kinds. The SDK translates. `ctx.http?.authInfo` works for both.
+- **A 2025 answer can be SSE:** `event: message` and one `data:` line. The client must accept both `application/json` and `text/event-stream`, or it gets a 406. Real clients do this.
+- **To drop 2025 support later,** change `legacy: "stateless"` to `legacy: "reject"`.
 
 ## Authentication
 
-Pass `authorization: { bearer: { verifier } }` to the plugin. A request then needs `Authorization: Bearer <token>` with a token the verifier accepts, or it gets a 401.
+Pass the verifier to the endpoint:
+
+- Both kinds of revision: `verifier` option of `src/plugins/mcp.ts`.
+- `2026-07-28` only: `authorization: { bearer: { verifier } }`.
+
+A request then needs `Authorization: Bearer <token>` with a token the verifier accepts, or it gets a 401.
 
 For one shared secret, add `MCP_TOKEN: z.string().min(32)` to `src/env.ts`. Write the verifier in `src/mcp/auth.ts`:
 
@@ -255,9 +465,9 @@ export const verifier: OAuthTokenVerifier = {
 - **Config files:** set a value in `.env.example` and under `env` of the `docker` job in `.github/workflows/ci.yml`. Add a `README.md` table row. Add `MCP_TOKEN: ${MCP_TOKEN:-}` to `compose.yml`.
 - **"Every variable is optional"** is now false. Fix that sentence in `README.md` and at the top of `.env.example`.
 - **Test setup:** set `process.env.MCP_TOKEN` in `test/setup.ts`. Child processes do not get it: also add `MCP_TOKEN: env.MCP_TOKEN` next to `NODE_ENV` in `childEnv` of `test/helpers.ts`, or every test that starts a process fails.
-- **`mcpRequest`** must send the header ``authorization: `Bearer ${env.MCP_TOKEN}` ``.
+- **`mcpRequest`** (and `legacyMcpRequest`) must send the header ``authorization: `Bearer ${env.MCP_TOKEN}` ``.
 - **Test** a request with no token and one with a wrong token. Both get a 401.
-- **`curl`** from step 10 needs `-H "authorization: Bearer $MCP_TOKEN"`.
+- **Each `curl`** from step 10 needs `-H "authorization: Bearer $MCP_TOKEN"`.
 - **OAuth provider:** verify its token in `verifyAccessToken`. Return the real client, scopes and expiry.
 - **Caller identity:** read `ctx.http?.authInfo`. `ctx` is the handler's last argument: `(args, ctx) => ...`, or `(ctx) => ...` without `inputSchema`.
 
@@ -271,7 +481,7 @@ Add it to the matching file in `src/mcp/tools/`. Register any new file in `src/m
 - **Failed tool calls are HTTP 200**, with `isError: true`. Unknown tools are also 200, with a JSON-RPC `error` and no `result`.
 - **No `REQUEST_TIMEOUT_MS`.** Slow tool calls never get a 503. Give slow work its own time limit.
 - **Only `POST`.** Other methods on `/mcp` get a 405.
-- **The request log** shows every call as `POST /mcp`. For method and tool name, pass `onRequestComplete: (event) => fastify.log.info(event, "MCP request completed")` to the plugin.
+- **The request log** shows every call as `POST /mcp`. One more line, `MCP request completed`, adds the method and the tool name. See step 6.
 
 ## Troubleshooting
 
@@ -279,8 +489,10 @@ Add it to the matching file in `src/mcp/tools/`. Register any new file in `src/m
 | --- | --- |
 | 403 `Invalid Host: <name>` | Hostname not in `MCP_ALLOWED_HOSTS`. Behind a proxy, allow the `Host` value it forwards |
 | 403 `Invalid Origin: <name>` | Browser client on another site. Add its hostname to plugin option `allowedOrigins` |
-| 400 `Unsupported protocol version` | Client speaks an older MCP revision |
-| 400 `the request headers and body disagree` | `MCP-Protocol-Version`, `Mcp-Method` or (tool calls) `Mcp-Name` header missing or not matching the body |
+| `-32022: Unsupported protocol version: 2025-…` (HTTP 400), client fails at startup | Client speaks a 2025 revision and the endpoint serves `2026-07-28` only. See [Serve both kinds of revision](#serve-both-kinds-of-revision) |
+| 406 `Client must accept both application/json and text/event-stream` | 2025 request without that `Accept` header |
+| 405 on `GET` or `DELETE` | 2025 client wants a session. Sessions are not served, see [Serve both kinds of revision](#serve-both-kinds-of-revision) |
+| 400 `the request headers and body disagree` | `2026-07-28` request with the `MCP-Protocol-Version`, `Mcp-Method` or (tool calls) `Mcp-Name` header missing or not matching the body |
 | 401 `Token has no expiration time` | Verifier returned no `expiresAt` |
 | `Output validation error` in a tool result | `structuredContent` missing or not matching `outputSchema` |
 | Typecheck fails on `transport` | Option does not match the installed version, see step 6 |
